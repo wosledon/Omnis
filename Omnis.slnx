@@ -1,2 +1,15 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Omnis.Api/Omnis.Api.csproj" />
+    <Project Path="src/Omnis.Cache/Omnis.Cache.csproj" />
+    <Project Path="src/Omnis.Contracts/Omnis.Contracts.csproj" />
+    <Project Path="src/Omnis.DocumentX/Omnis.DocumentX.csproj" />
+    <Project Path="src/Omnis.EfCore.Npgsql/Omnis.EfCore.Npgsql.csproj" />
+    <Project Path="src/Omnis.EfCore/Omnis.EfCore.csproj" />
+    <Project Path="src/Omnis.Llm/Omnis.Llm.csproj" />
+    <Project Path="src/Omnis.Queue/Omnis.Queue.csproj" />
+    <Project Path="src/Omnis.Retrieval/Omnis.Retrieval.csproj" />
+    <Project Path="src/Omnis.Shared/Omnis.Shared.csproj" />
+    <Project Path="src/Omnis.Workflow/Omnis.Workflow.csproj" />
+  </Folder>
 </Solution>
