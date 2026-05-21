@@ -23,7 +23,7 @@ public static class TransactionExtensions
         IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
         CancellationToken cancellationToken = default)
     {
-        await using var tx = await unitOfWork.BeginTransactionAsync(isolationLevel, cancellationToken);
+        await using var tx = await unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
             await action(unitOfWork, cancellationToken);
@@ -51,7 +51,7 @@ public static class TransactionExtensions
         IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
         CancellationToken cancellationToken = default)
     {
-        await using var tx = await unitOfWork.BeginTransactionAsync(isolationLevel, cancellationToken);
+        await using var tx = await unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
             var result = await func(unitOfWork, cancellationToken);

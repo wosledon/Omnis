@@ -54,10 +54,9 @@ public class UnitOfWork<TDbContext>(TDbContext db) : IUnitOfWork
     public bool HasActiveTransaction => _transactionManager.HasActiveTransaction;
 
     public async ValueTask<TransactionContext> BeginTransactionAsync(
-        System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted,
         CancellationToken cancellationToken = default)
     {
-        return await _transactionManager.BeginTransactionAsync(isolationLevel, cancellationToken);
+        return await _transactionManager.BeginTransactionAsync(cancellationToken);
     }
 
     public async ValueTask CommitTransactionAsync(CancellationToken cancellationToken = default)

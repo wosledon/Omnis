@@ -1,4 +1,6 @@
+using System.Transactions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Omnis.EfCore.Contracts;
 
@@ -11,17 +13,12 @@ namespace Omnis.EfCore.Contracts;
 /// - 只有最外层事务（计数为1）提交/回滚时才会操作数据库
 /// - 每次 Dispose 会减少计数，只有计数为0时才真正释放
 /// </remarks>
-public class TransactionManager : ITransactionManager
+public class TransactionManager(DbContext context) : ITransactionManager
 {
-    private readonly DbContext _context;
+    private readonly DbContext _context = context ?? throw new ArgumentNullException(nameof(context));
     private IDbContextTransaction? _currentTransaction;
     private int _referenceCount;
     private bool _disposed;
-
-    public TransactionManager(DbContext context)
-    {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-    }
 
     /// <summary>
     /// 是否存在活动事务
@@ -38,7 +35,6 @@ public class TransactionManager : ITransactionManager
     /// 开始新的事务
     /// </summary>
     public async ValueTask<TransactionContext> BeginTransactionAsync(
-        System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -53,7 +49,7 @@ public class TransactionManager : ITransactionManager
         }
 
         // 开始新的事务
-        _currentTransaction = await _context.Database.BeginTransactionAsync(isolationLevel, cancellationToken);
+        _currentTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         _referenceCount = 1;
 
         return new TransactionContext(_currentTransaction, isNested: false);

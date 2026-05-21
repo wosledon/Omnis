@@ -24,7 +24,6 @@ public interface ITransactionManager : IAsyncDisposable
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>事务上下文， disposing 时会自动回滚（除非已经提交）</returns>
     ValueTask<TransactionContext> BeginTransactionAsync(
-        IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
         CancellationToken cancellationToken = default);
 
     /// <summary>
