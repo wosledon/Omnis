@@ -6,7 +6,7 @@ using Omnis.EfCore.Services;
 namespace Omnis.EfCore;
 
 public class OmnisDbContext(
-    DbContextOptions<OmnisDbContext> options,
+    DbContextOptions options,
     IAuditContextProvider? auditContextProvider
 ) : DbContext(options)
 {
@@ -49,12 +49,18 @@ public class OmnisDbContext(
             {
                 if (entry.State == EntityState.Added)
                 {
-                    auditableEntity.CreatedBy = userId;
-                    auditableEntity.CreatedAt = now;
+                    // 如果业务服务已经传入审计用户，则保留业务侧的明确值。
+                    auditableEntity.CreatedBy ??= userId;
+                    auditableEntity.CreatedAt ??= now;
                 }
                 else
                 {
-                    auditableEntity.UpdatedBy = userId;
+                    // 后台任务没有当前用户时，不覆盖服务层设置的操作人。
+                    if (userId.HasValue)
+                    {
+                        auditableEntity.UpdatedBy = userId;
+                    }
+
                     auditableEntity.UpdatedAt = now;
                 }
             }

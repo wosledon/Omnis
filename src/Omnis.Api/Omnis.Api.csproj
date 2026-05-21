@@ -10,4 +10,10 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Omnis.Contracts\Omnis.Contracts.csproj" />
+    <ProjectReference Include="..\Omnis.DocumentX\Omnis.DocumentX.csproj" />
+    <ProjectReference Include="..\Omnis.EfCore.Npgsql\Omnis.EfCore.Npgsql.csproj" />
+  </ItemGroup>
+
 </Project>

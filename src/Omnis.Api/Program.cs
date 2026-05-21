@@ -1,8 +1,11 @@
+using Omnis.Api.Endpoints;
+using Omnis.EfCore.Npgsql.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+// 注册 OpenAPI 和知识管理模块；知识模块默认使用 PostgreSQL 持久化。
 builder.Services.AddOpenApi();
+builder.Services.AddPostgresKnowledgeManagement(builder.Configuration);
 
 var app = builder.Build();
 
@@ -14,28 +17,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// 轻量健康检查，供本地 Docker/反向代理探活使用。
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
+    .WithName("Health");
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+// 挂载 PRD M1 知识管理相关接口。
+app.MapKnowledgeEndpoints();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
