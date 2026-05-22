@@ -104,7 +104,7 @@ public class OmnisDbContext(
     /// <summary>
     /// 软删除实体的扩展方法 - 将 IsDeleted 设置为 true 而不是真正删除
     /// </summary>
-    void SoftDelete<TEntity>(TEntity entity) where TEntity : class, ISoftDeleteEntity
+    public void SoftDelete<TEntity>(TEntity entity) where TEntity : class, ISoftDeleteEntity
     {
         entity.IsDeleted = true;
         Entry(entity).State = EntityState.Modified;
