@@ -15,7 +15,11 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// 本地开发调试优先使用 HTTP，避免 Postman/Apifox 因开发证书未信任而报 SSL 证书错误。
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 // 轻量健康检查，供本地 Docker/反向代理探活使用。
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
