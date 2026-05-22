@@ -137,7 +137,7 @@ internal sealed class PostgresKnowledgeService(
         {
             // 文档元数据和 ACL 先落库，后续处理失败时仍可展示失败原因。
             dbContext.KnowledgeDocuments.Add(document);
-            ReplaceAclEntities(document.Id, aclEntries, null);
+            await ReplaceAclEntitiesAsync(document.Id, aclEntries, null, cancellationToken);
             dbContext.KnowledgeAuditLogs.Add(CreateAuditLogEntity(document.TenantId, document.WorkspaceId, "document.uploaded", "Document", document.Id, null, null, ToJson(ToDocumentDto(document))));
             await dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -318,7 +318,7 @@ internal sealed class PostgresKnowledgeService(
 
         await using (var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken))
         {
-            ReplaceAclEntities(documentId, aclEntries, actorGuid);
+            await ReplaceAclEntitiesAsync(documentId, aclEntries, actorGuid, cancellationToken);
 
             document.Visibility = request.Visibility;
             document.UpdatedBy = actorGuid;
@@ -386,11 +386,15 @@ internal sealed class PostgresKnowledgeService(
     /// <summary>
     /// 用新 ACL 完整替换旧 ACL 实体。
     /// </summary>
-    void ReplaceAclEntities(Guid documentId, IReadOnlyCollection<UpsertDocumentAclEntry> acl, Guid? actorId)
+    async Task ReplaceAclEntitiesAsync(
+        Guid documentId,
+        IReadOnlyCollection<UpsertDocumentAclEntry> acl,
+        Guid? actorId,
+        CancellationToken cancellationToken)
     {
-        var existingEntries = dbContext.DocumentAclEntries
+        var existingEntries = await dbContext.DocumentAclEntries
             .Where(entry => entry.DocumentId == documentId)
-            .ToArray();
+            .ToArrayAsync(cancellationToken);
 
         dbContext.DocumentAclEntries.RemoveRange(existingEntries);
 
