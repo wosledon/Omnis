@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Omnis.EfCore.Npgsql.Entities;
+using Omnis.EfCore.Npgsql.Knowledge.Entities;
+using Omnis.EfCore.Npgsql.Rag.Entities;
 using Omnis.EfCore.Services;
 
 namespace Omnis.EfCore.Npgsql;
@@ -30,6 +31,9 @@ public sealed class OmnisNpgsqlDbContext(
     /// <summary>知识模块审计日志实体集合。</summary>
     public DbSet<KnowledgeAuditLogEntity> KnowledgeAuditLogs => Set<KnowledgeAuditLogEntity>();
 
+    /// <summary>RAG 推理观测日志实体集合。</summary>
+    public DbSet<RagInferenceLogEntity> RagInferenceLogs => Set<RagInferenceLogEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureKnowledgeBase(modelBuilder);
@@ -38,6 +42,7 @@ public sealed class OmnisNpgsqlDbContext(
         ConfigureDocumentChunk(modelBuilder);
         ConfigureKnowledgeVector(modelBuilder);
         ConfigureKnowledgeAuditLog(modelBuilder);
+        ConfigureRagInferenceLog(modelBuilder);
 
         base.OnModelCreating(modelBuilder);
     }
@@ -178,6 +183,40 @@ public sealed class OmnisNpgsqlDbContext(
 
         entity.HasIndex(x => new { x.TenantId, x.CreatedAt }).HasDatabaseName("idx_knowledge_audit_logs_tenant_time");
         entity.HasIndex(x => new { x.EntityId, x.CreatedAt }).HasDatabaseName("idx_knowledge_audit_logs_entity");
+    }
+
+    /// <summary>
+    /// 配置 RAG 推理观测日志表，用于调试检索、Prompt、LLM 输出和置信度。
+    /// </summary>
+    static void ConfigureRagInferenceLog(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<RagInferenceLogEntity>();
+        entity.ToTable("rag_inference_logs");
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id).HasColumnName("id");
+        entity.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.Property(x => x.WorkspaceId).HasColumnName("workspace_id").IsRequired();
+        entity.Property(x => x.ApplicationId).HasColumnName("application_id");
+        entity.Property(x => x.ConversationId).HasColumnName("conversation_id");
+        entity.Property(x => x.MessageId).HasColumnName("message_id");
+        entity.Property(x => x.UserId).HasColumnName("user_id");
+        entity.Property(x => x.UserQuestion).HasColumnName("user_question");
+        entity.Property(x => x.RewrittenQuery).HasColumnName("rewritten_query");
+        entity.Property(x => x.RetrievedChunksJson).HasColumnName("retrieved_chunks").HasColumnType("jsonb");
+        entity.Property(x => x.FinalPrompt).HasColumnName("final_prompt");
+        entity.Property(x => x.LlmRawOutput).HasColumnName("llm_raw_output");
+        entity.Property(x => x.FinalAnswer).HasColumnName("final_answer");
+        entity.Property(x => x.ConfidenceScore).HasColumnName("confidence_score").HasPrecision(5, 4);
+        entity.Property(x => x.CitationSourceIds).HasColumnName("citation_source_ids").HasColumnType("text[]");
+        entity.Property(x => x.HasHallucination).HasColumnName("has_hallucination");
+        entity.Property(x => x.RetrievalDurationMs).HasColumnName("retrieval_duration_ms");
+        entity.Property(x => x.GenerationDurationMs).HasColumnName("generation_duration_ms");
+        entity.Property(x => x.InferenceDurationMs).HasColumnName("inference_duration_ms");
+        entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+
+        entity.HasIndex(x => new { x.TenantId, x.CreatedAt }).HasDatabaseName("idx_rag_logs_tenant_time");
+        entity.HasIndex(x => x.ConfidenceScore).HasDatabaseName("idx_rag_logs_confidence");
     }
 
     /// <summary>

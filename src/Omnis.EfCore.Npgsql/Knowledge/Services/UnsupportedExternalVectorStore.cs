@@ -1,6 +1,6 @@
 using Omnis.EfCore.Npgsql.Contracts;
 
-namespace Omnis.EfCore.Npgsql.Services;
+namespace Omnis.EfCore.Npgsql.Knowledge.Services;
 
 /// <summary>
 /// 外部向量库占位实现，用于明确提示 Qdrant/Milvus 需要接入具体 SDK。

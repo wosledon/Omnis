@@ -5,9 +5,9 @@ using Microsoft.EntityFrameworkCore;
 using Omnis.Contracts.Knowledge;
 using Omnis.DocumentX.Knowledge;
 using Omnis.EfCore.Npgsql.Contracts;
-using Omnis.EfCore.Npgsql.Entities;
+using Omnis.EfCore.Npgsql.Knowledge.Entities;
 
-namespace Omnis.EfCore.Npgsql.Services;
+namespace Omnis.EfCore.Npgsql.Knowledge.Services;
 
 /// <summary>
 /// PostgreSQL 版知识管理服务，所有数据库读写都通过 EF Core 实体完成。

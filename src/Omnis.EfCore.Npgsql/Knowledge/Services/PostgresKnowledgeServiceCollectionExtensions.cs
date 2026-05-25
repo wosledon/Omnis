@@ -4,41 +4,37 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Omnis.DocumentX.Knowledge;
 using Omnis.EfCore.Npgsql.Contracts;
+using Omnis.EfCore.Npgsql.Initialization;
+using Omnis.EfCore.Npgsql.Rag.Services;
+using Omnis.Retrieval.Rag;
 
-namespace Omnis.EfCore.Npgsql.Services;
+namespace Omnis.EfCore.Npgsql.Knowledge.Services;
 
 /// <summary>
 /// PostgreSQL 知识管理模块依赖注册扩展。
 /// </summary>
 public static class PostgresKnowledgeServiceCollectionExtensions
 {
-    /// <summary>
-    /// 注册 PostgreSQL 知识服务、文档处理管线、向量存储和启动初始化器。
-    /// </summary>
     public static IServiceCollection AddPostgresKnowledgeManagement(
         this IServiceCollection services,
         IConfiguration configuration)
     {
         var options = BindOptions(configuration);
 
-        // 文档处理管线放在 DocumentX 项目，PG 服务复用它来解析和分片。
         services.AddDocumentProcessing();
         services.AddSingleton(options);
-
-        // 使用 EF Core DbContext 作为唯一数据库入口，业务代码只操作实体集合。
         services.AddDbContext<OmnisNpgsqlDbContext>(builder => builder.UseNpgsql(options.ConnectionString));
-
         services.AddSingleton<IKnowledgeVectorizer, DeterministicVectorizer>();
         services.AddScoped<IKnowledgeVectorStore>(sp => CreateVectorStore(sp, options));
         services.AddScoped<IKnowledgeService, PostgresKnowledgeService>();
-        services.AddSingleton<IHostedService, PostgresKnowledgeInitializer>();
+        services.AddRagEngineCore();
+        services.AddScoped<IHybridRetriever, PostgresHybridRetriever>();
+        services.AddScoped<IRagObservationSink, PostgresRagObservationSink>();
+        services.AddSingleton<IHostedService, PostgresSchemaInitializer>();
 
         return services;
     }
 
-    /// <summary>
-    /// 根据配置选择向量存储实现，Qdrant/Milvus 当前保留扩展点。
-    /// </summary>
     static IKnowledgeVectorStore CreateVectorStore(IServiceProvider services, PostgresKnowledgeOptions options)
     {
         return options.VectorProvider.Trim().ToLowerInvariant() switch
@@ -51,9 +47,6 @@ public static class PostgresKnowledgeServiceCollectionExtensions
         };
     }
 
-    /// <summary>
-    /// 从配置读取知识模块选项，并提供本地 Docker PG 默认值。
-    /// </summary>
     static PostgresKnowledgeOptions BindOptions(IConfiguration configuration)
     {
         var section = configuration.GetSection(PostgresKnowledgeOptions.SectionName);

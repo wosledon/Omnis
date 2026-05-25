@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Omnis.EfCore.Npgsql.Contracts;
-using Omnis.EfCore.Npgsql.Entities;
+using Omnis.EfCore.Npgsql.Knowledge.Entities;
 
-namespace Omnis.EfCore.Npgsql.Services;
+namespace Omnis.EfCore.Npgsql.Knowledge.Services;
 
 /// <summary>
 /// PostgreSQL 向量存储实现，默认使用实体表保存 double precision[] 向量。

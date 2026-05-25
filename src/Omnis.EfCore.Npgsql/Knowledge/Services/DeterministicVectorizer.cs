@@ -3,7 +3,7 @@ using System.Text;
 
 using Omnis.EfCore.Npgsql.Contracts;
 
-namespace Omnis.EfCore.Npgsql.Services;
+namespace Omnis.EfCore.Npgsql.Knowledge.Services;
 
 /// <summary>
 /// 确定性占位向量器，用哈希技巧生成可重复的稀疏语义近似向量。

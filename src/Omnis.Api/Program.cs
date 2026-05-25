@@ -1,5 +1,5 @@
 using Omnis.Api.Endpoints;
-using Omnis.EfCore.Npgsql.Services;
+using Omnis.EfCore.Npgsql.Knowledge.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,5 +27,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 
 // 挂载 PRD M1 知识管理相关接口。
 app.MapKnowledgeEndpoints();
+app.MapRagEndpoints();
 
 app.Run();

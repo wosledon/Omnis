@@ -1,7 +1,7 @@
 using Omnis.Contracts.Knowledge;
 using Omnis.EfCore.Contracts;
 
-namespace Omnis.EfCore.Npgsql.Entities;
+namespace Omnis.EfCore.Npgsql.Knowledge.Entities;
 
 /// <summary>
 /// 知识库持久化实体。
