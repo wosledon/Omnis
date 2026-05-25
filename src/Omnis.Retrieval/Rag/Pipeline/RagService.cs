@@ -3,6 +3,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Omnis.Retrieval.Rag;
 
+/// <summary>
+/// RAG 主流程实现，串联改写、检索、重排、生成和观测落库。
+/// </summary>
 internal sealed class RagService(
     IRagQueryRewriter queryRewriter,
     IHybridRetriever retriever,
@@ -12,6 +15,9 @@ internal sealed class RagService(
     IRagObservationSink observationSink,
     ILogger<RagService> logger) : IRagService
 {
+    /// <summary>
+    /// 执行一次完整的 RAG 问答，返回答案、引用、检索结果和调试信息。
+    /// </summary>
     public async Task<RagAnswerResponse> AnswerAsync(RagAnswerRequest request, CancellationToken cancellationToken = default)
     {
         Validate(request);

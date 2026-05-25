@@ -5,6 +5,9 @@ using Omnis.Retrieval.Rag;
 
 namespace Omnis.EfCore.Npgsql.Rag.Services;
 
+/// <summary>
+/// 基于 PostgreSQL 与知识库元数据的混合检索实现。
+/// </summary>
 internal sealed class PostgresHybridRetriever(
     OmnisNpgsqlDbContext dbContext,
     IKnowledgeVectorizer vectorizer) : IHybridRetriever
@@ -18,6 +21,9 @@ internal sealed class PostgresHybridRetriever(
         DocumentPermission.Admin
     ];
 
+    /// <summary>
+    /// 按租户、工作区、知识库和访问权限过滤后，执行向量与关键词混合检索。
+    /// </summary>
     public async Task<IReadOnlyList<RetrievalCandidate>> SearchAsync(
         HybridSearchRequest request,
         CancellationToken cancellationToken = default)
@@ -102,6 +108,9 @@ internal sealed class PostgresHybridRetriever(
         return candidates;
     }
 
+    /// <summary>
+    /// 计算两个向量的余弦相似度。
+    /// </summary>
     static double Cosine(double[] left, double[] right)
     {
         var length = Math.Min(left.Length, right.Length);
@@ -129,11 +138,17 @@ internal sealed class PostgresHybridRetriever(
         return dot / (Math.Sqrt(leftNorm) * Math.Sqrt(rightNorm));
     }
 
+    /// <summary>
+    /// 将余弦值映射到 0 到 1 区间。
+    /// </summary>
     static double NormalizeCosine(double value)
     {
         return Math.Max(0, Math.Min(1, (value + 1) / 2));
     }
 
+    /// <summary>
+    /// 根据 query 词与内容词的覆盖情况计算关键词得分。
+    /// </summary>
     static double KeywordScore(IReadOnlyCollection<string> queryTerms, string content)
     {
         if (queryTerms.Count == 0)
@@ -155,6 +170,9 @@ internal sealed class PostgresHybridRetriever(
         return Math.Max(0, Math.Min(1, 0.75 * coverage + 0.25 * density));
     }
 
+    /// <summary>
+    /// 将文本拆分为词元和 CJK 双字词元，供混合检索使用。
+    /// </summary>
     static IEnumerable<string> Tokenize(string value)
     {
         var normalized = value.ToLowerInvariant();

@@ -4,10 +4,16 @@ using Omnis.Retrieval.Rag;
 
 namespace Omnis.EfCore.Npgsql.Rag.Services;
 
+/// <summary>
+/// 将 RAG 观测记录写入 PostgreSQL。
+/// </summary>
 internal sealed class PostgresRagObservationSink(OmnisNpgsqlDbContext dbContext) : IRagObservationSink
 {
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// 保存一条推理观测记录到数据库。
+    /// </summary>
     public async Task SaveAsync(RagObservationRecord record, CancellationToken cancellationToken = default)
     {
         dbContext.RagInferenceLogs.Add(new RagInferenceLogEntity
@@ -37,6 +43,9 @@ internal sealed class PostgresRagObservationSink(OmnisNpgsqlDbContext dbContext)
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// 将长整型耗时安全截断到 int 范围内。
+    /// </summary>
     static int ToInt(long value)
     {
         return value > int.MaxValue ? int.MaxValue : (int)Math.Max(0, value);
