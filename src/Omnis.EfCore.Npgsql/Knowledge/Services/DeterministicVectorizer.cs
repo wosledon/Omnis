@@ -1,14 +1,15 @@
 using System.Security.Cryptography;
 using System.Text;
 
-using Omnis.EfCore.Npgsql.Contracts;
+using Omnis.EfCore.Npgsql.Options;
+using Omnis.EfCore.Npgsql.Vector;
 
 namespace Omnis.EfCore.Npgsql.Knowledge.Services;
 
 /// <summary>
 /// 确定性占位向量器，用哈希技巧生成可重复的稀疏语义近似向量。
 /// </summary>
-internal sealed class DeterministicVectorizer(PostgresKnowledgeOptions options) : IKnowledgeVectorizer
+internal sealed class DeterministicVectorizer(OmnisNpgsqlOptions options) : IKnowledgeVectorizer
 {
     /// <summary>
     /// 生成归一化向量，确保相同文本在不同进程中得到相同结果。

@@ -1,21 +1,21 @@
-namespace Omnis.EfCore.Npgsql.Contracts;
+namespace Omnis.EfCore.Npgsql.Options;
 
 /// <summary>
-/// PostgreSQL 知识管理模块配置项。
+/// Omnis Npgsql 适配层配置项。
 /// </summary>
-public sealed class PostgresKnowledgeOptions
+public sealed class OmnisNpgsqlOptions
 {
-    /// <summary>配置节名称。</summary>
-    public const string SectionName = "Knowledge:Postgres";
+    /// <summary>新的推荐配置节名称。</summary>
+    public const string SectionName = "Omnis:Npgsql";
 
-    /// <summary>业务数据库连接串，默认匹配本地 Docker PostgreSQL。</summary>
+    /// <summary>业务数据库连接字符串，默认匹配本地 Docker PostgreSQL。</summary>
     public string ConnectionString { get; set; } =
         "Host=localhost;Port=5432;Database=omnis;Username=postgres;Password=123456";
 
     /// <summary>启动时是否自动创建业务数据库。</summary>
     public bool AutoCreateDatabase { get; set; } = true;
 
-    /// <summary>启动时是否自动创建知识模块表结构。</summary>
+    /// <summary>启动时是否自动执行当前项目内置 SQL 脚本。</summary>
     public bool AutoCreateTables { get; set; } = true;
 
     /// <summary>向量存储提供方；当前默认 PostgreSql，预留 Qdrant/Milvus。</summary>

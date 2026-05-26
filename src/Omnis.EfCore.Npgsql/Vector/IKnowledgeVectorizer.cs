@@ -1,7 +1,7 @@
-namespace Omnis.EfCore.Npgsql.Contracts;
+namespace Omnis.EfCore.Npgsql.Vector;
 
 /// <summary>
-/// 文本向量化接口；后续可替换为 OpenAI/Azure/本地 embedding 模型。
+/// 文本向量化接口；后续可替换为 OpenAI、Azure OpenAI 或本地 embedding 模型。
 /// </summary>
 public interface IKnowledgeVectorizer
 {

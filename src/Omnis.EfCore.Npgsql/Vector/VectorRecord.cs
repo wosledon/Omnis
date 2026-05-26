@@ -1,4 +1,4 @@
-namespace Omnis.EfCore.Npgsql.Contracts;
+namespace Omnis.EfCore.Npgsql.Vector;
 
 /// <summary>
 /// 写入向量存储的分片向量记录。

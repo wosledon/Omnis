@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Omnis.EfCore.Npgsql.Chat.Entities;
 using Omnis.EfCore.Npgsql.Knowledge.Entities;
 using Omnis.EfCore.Npgsql.Rag.Entities;
 using Omnis.EfCore.Services;
@@ -34,6 +35,14 @@ public sealed class OmnisNpgsqlDbContext(
     /// <summary>RAG 推理观测日志实体集合。</summary>
     public DbSet<RagInferenceLogEntity> RagInferenceLogs => Set<RagInferenceLogEntity>();
 
+    public DbSet<ConversationEntity> Conversations => Set<ConversationEntity>();
+
+    public DbSet<ConversationMessageEntity> ConversationMessages => Set<ConversationMessageEntity>();
+
+    public DbSet<MessageFeedbackEntity> MessageFeedback => Set<MessageFeedbackEntity>();
+
+    public DbSet<HumanHandoffEntity> HumanHandoffs => Set<HumanHandoffEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureKnowledgeBase(modelBuilder);
@@ -43,6 +52,10 @@ public sealed class OmnisNpgsqlDbContext(
         ConfigureKnowledgeVector(modelBuilder);
         ConfigureKnowledgeAuditLog(modelBuilder);
         ConfigureRagInferenceLog(modelBuilder);
+        ConfigureConversation(modelBuilder);
+        ConfigureConversationMessage(modelBuilder);
+        ConfigureMessageFeedback(modelBuilder);
+        ConfigureHumanHandoff(modelBuilder);
 
         base.OnModelCreating(modelBuilder);
     }
@@ -217,6 +230,84 @@ public sealed class OmnisNpgsqlDbContext(
 
         entity.HasIndex(x => new { x.TenantId, x.CreatedAt }).HasDatabaseName("idx_rag_logs_tenant_time");
         entity.HasIndex(x => x.ConfidenceScore).HasDatabaseName("idx_rag_logs_confidence");
+    }
+
+    static void ConfigureConversation(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<ConversationEntity>();
+        entity.ToTable("conversations");
+        ConfigureEntityBase(entity);
+
+        entity.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.Property(x => x.WorkspaceId).HasColumnName("workspace_id").IsRequired();
+        entity.Property(x => x.ApplicationId).HasColumnName("application_id");
+        entity.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
+        entity.Property(x => x.UserName).HasColumnName("user_name");
+        entity.Property(x => x.UserGroups).HasColumnName("user_groups").HasColumnType("text[]");
+        entity.Property(x => x.UserRoles).HasColumnName("user_roles").HasColumnType("text[]");
+        entity.Property(x => x.Channel).HasColumnName("channel").IsRequired();
+        entity.Property(x => x.Status).HasColumnName("status").HasConversion<int>();
+        entity.Property(x => x.KnowledgeBaseIds).HasColumnName("knowledge_base_ids").HasColumnType("uuid[]");
+        entity.Property(x => x.ClosedAt).HasColumnName("closed_at");
+
+        entity.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.CreatedAt }).HasDatabaseName("idx_conversations_scope_time");
+        entity.HasIndex(x => new { x.TenantId, x.UserId, x.CreatedAt }).HasDatabaseName("idx_conversations_user_time");
+    }
+
+    static void ConfigureConversationMessage(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<ConversationMessageEntity>();
+        entity.ToTable("conversation_messages");
+        ConfigureEntityBase(entity);
+
+        entity.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.Property(x => x.ConversationId).HasColumnName("conversation_id");
+        entity.Property(x => x.Role).HasColumnName("role").HasConversion<int>();
+        entity.Property(x => x.Content).HasColumnName("content").IsRequired();
+        entity.Property(x => x.CitationsJson).HasColumnName("citations").HasColumnType("jsonb");
+        entity.Property(x => x.ConfidenceScore).HasColumnName("confidence_score");
+        entity.Property(x => x.RagInferenceLogId).HasColumnName("rag_inference_log_id");
+
+        entity.HasIndex(x => new { x.TenantId, x.ConversationId, x.CreatedAt }).HasDatabaseName("idx_conversation_messages_conversation_time");
+        entity.HasOne<ConversationEntity>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+    }
+
+    static void ConfigureMessageFeedback(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<MessageFeedbackEntity>();
+        entity.ToTable("message_feedback");
+        ConfigureEntityBase(entity);
+
+        entity.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.Property(x => x.MessageId).HasColumnName("message_id");
+        entity.Property(x => x.ConversationId).HasColumnName("conversation_id");
+        entity.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
+        entity.Property(x => x.Rating).HasColumnName("rating").HasConversion<int>();
+        entity.Property(x => x.Reason).HasColumnName("reason");
+        entity.Property(x => x.RagInferenceLogId).HasColumnName("rag_inference_log_id");
+
+        entity.HasIndex(x => new { x.TenantId, x.CreatedAt }).HasDatabaseName("idx_message_feedback_tenant_time");
+        entity.HasIndex(x => x.MessageId).HasDatabaseName("idx_message_feedback_message");
+        entity.HasOne<ConversationMessageEntity>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+
+    static void ConfigureHumanHandoff(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<HumanHandoffEntity>();
+        entity.ToTable("human_handoffs");
+        ConfigureEntityBase(entity);
+
+        entity.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.Property(x => x.ConversationId).HasColumnName("conversation_id");
+        entity.Property(x => x.TriggerType).HasColumnName("trigger_type").HasConversion<int>();
+        entity.Property(x => x.SummaryJson).HasColumnName("summary").HasColumnType("jsonb");
+        entity.Property(x => x.LastAiMessageId).HasColumnName("last_ai_message_id");
+        entity.Property(x => x.Status).HasColumnName("status").HasConversion<int>();
+        entity.Property(x => x.AssignedAgentId).HasColumnName("assigned_agent_id");
+
+        entity.HasIndex(x => new { x.TenantId, x.Status, x.CreatedAt }).HasDatabaseName("idx_human_handoffs_queue");
+        entity.HasIndex(x => x.ConversationId).HasDatabaseName("idx_human_handoffs_conversation");
+        entity.HasOne<ConversationEntity>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
     }
 
     /// <summary>

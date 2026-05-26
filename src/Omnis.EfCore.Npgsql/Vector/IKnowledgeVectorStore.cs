@@ -1,4 +1,4 @@
-namespace Omnis.EfCore.Npgsql.Contracts;
+namespace Omnis.EfCore.Npgsql.Vector;
 
 /// <summary>
 /// 知识向量存储抽象；默认实现是 PostgreSQL，后续可接 Qdrant/Milvus。

@@ -4,8 +4,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Omnis.Contracts.Knowledge;
 using Omnis.DocumentX.Knowledge;
-using Omnis.EfCore.Npgsql.Contracts;
 using Omnis.EfCore.Npgsql.Knowledge.Entities;
+using Omnis.EfCore.Npgsql.Vector;
 
 namespace Omnis.EfCore.Npgsql.Knowledge.Services;
 

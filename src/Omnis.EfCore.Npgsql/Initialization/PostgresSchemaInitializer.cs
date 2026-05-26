@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Omnis.EfCore.Npgsql.Contracts;
+using Omnis.EfCore.Npgsql.Options;
 
 namespace Omnis.EfCore.Npgsql.Initialization;
 
@@ -11,7 +11,7 @@ namespace Omnis.EfCore.Npgsql.Initialization;
 /// </summary>
 internal sealed class PostgresSchemaInitializer(
     IServiceScopeFactory scopeFactory,
-    PostgresKnowledgeOptions options
+    OmnisNpgsqlOptions options
 ) : IHostedService
 {
     /// <summary>

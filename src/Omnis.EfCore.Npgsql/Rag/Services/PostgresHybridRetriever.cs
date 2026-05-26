@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Omnis.Contracts.Knowledge;
-using Omnis.EfCore.Npgsql.Contracts;
+using Omnis.EfCore.Npgsql.Vector;
 using Omnis.Retrieval.Rag;
 
 namespace Omnis.EfCore.Npgsql.Rag.Services;

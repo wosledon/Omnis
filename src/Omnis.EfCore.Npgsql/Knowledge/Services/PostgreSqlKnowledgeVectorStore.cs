@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Omnis.EfCore.Npgsql.Contracts;
 using Omnis.EfCore.Npgsql.Knowledge.Entities;
+using Omnis.EfCore.Npgsql.Vector;
 
 namespace Omnis.EfCore.Npgsql.Knowledge.Services;
 
