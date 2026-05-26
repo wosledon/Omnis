@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Omnis.EfCore.Npgsql.Channel.Entities;
 using Omnis.EfCore.Npgsql.Chat.Entities;
 using Omnis.EfCore.Npgsql.Knowledge.Entities;
+using Omnis.EfCore.Npgsql.Llm.Entities;
 using Omnis.EfCore.Npgsql.Rag.Entities;
 using Omnis.EfCore.Services;
 
@@ -43,6 +45,16 @@ public sealed class OmnisNpgsqlDbContext(
 
     public DbSet<HumanHandoffEntity> HumanHandoffs => Set<HumanHandoffEntity>();
 
+    public DbSet<ChannelConfigEntity> ChannelConfigs => Set<ChannelConfigEntity>();
+
+    public DbSet<ChannelWebhookSubscriptionEntity> ChannelWebhookSubscriptions => Set<ChannelWebhookSubscriptionEntity>();
+
+    public DbSet<LlmModelConfigEntity> LlmModelConfigs => Set<LlmModelConfigEntity>();
+
+    public DbSet<LlmInvocationLogEntity> LlmInvocationLogs => Set<LlmInvocationLogEntity>();
+
+    public DbSet<LlmCircuitBreakerEntity> LlmCircuitBreakers => Set<LlmCircuitBreakerEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureKnowledgeBase(modelBuilder);
@@ -56,6 +68,11 @@ public sealed class OmnisNpgsqlDbContext(
         ConfigureConversationMessage(modelBuilder);
         ConfigureMessageFeedback(modelBuilder);
         ConfigureHumanHandoff(modelBuilder);
+        ConfigureChannelConfig(modelBuilder);
+        ConfigureChannelWebhookSubscription(modelBuilder);
+        ConfigureLlmModelConfig(modelBuilder);
+        ConfigureLlmInvocationLog(modelBuilder);
+        ConfigureLlmCircuitBreaker(modelBuilder);
 
         base.OnModelCreating(modelBuilder);
     }
@@ -308,6 +325,119 @@ public sealed class OmnisNpgsqlDbContext(
         entity.HasIndex(x => new { x.TenantId, x.Status, x.CreatedAt }).HasDatabaseName("idx_human_handoffs_queue");
         entity.HasIndex(x => x.ConversationId).HasDatabaseName("idx_human_handoffs_conversation");
         entity.HasOne<ConversationEntity>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+    }
+
+    static void ConfigureChannelConfig(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<ChannelConfigEntity>();
+        entity.ToTable("channel_configs");
+        ConfigureEntityBase(entity);
+
+        entity.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.Property(x => x.WorkspaceId).HasColumnName("workspace_id").IsRequired();
+        entity.Property(x => x.ApplicationId).HasColumnName("application_id");
+        entity.Property(x => x.Type).HasColumnName("type").HasConversion<int>();
+        entity.Property(x => x.Name).HasColumnName("name").IsRequired();
+        entity.Property(x => x.Status).HasColumnName("status").HasConversion<int>();
+        entity.Property(x => x.WidgetJson).HasColumnName("widget").HasColumnType("jsonb");
+        entity.Property(x => x.SettingsJson).HasColumnName("settings").HasColumnType("jsonb");
+        entity.Property(x => x.CredentialsJson).HasColumnName("credentials").HasColumnType("jsonb");
+
+        entity.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.ApplicationId, x.Type }).HasDatabaseName("idx_channel_configs_scope");
+        entity.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt }).HasDatabaseName("idx_channel_configs_status");
+    }
+
+    static void ConfigureChannelWebhookSubscription(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<ChannelWebhookSubscriptionEntity>();
+        entity.ToTable("channel_webhook_subscriptions");
+        ConfigureEntityBase(entity);
+
+        entity.Property(x => x.ChannelConfigId).HasColumnName("channel_config_id");
+        entity.Property(x => x.EventType).HasColumnName("event_type").HasConversion<int>();
+        entity.Property(x => x.Url).HasColumnName("url").IsRequired();
+        entity.Property(x => x.Secret).HasColumnName("secret");
+        entity.Property(x => x.Enabled).HasColumnName("enabled");
+
+        entity.HasIndex(x => x.ChannelConfigId).HasDatabaseName("idx_channel_webhooks_channel");
+        entity.HasIndex(x => new { x.EventType, x.Enabled }).HasDatabaseName("idx_channel_webhooks_event");
+        entity.HasOne<ChannelConfigEntity>().WithMany().HasForeignKey(x => x.ChannelConfigId).OnDelete(DeleteBehavior.Cascade);
+    }
+
+    static void ConfigureLlmModelConfig(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<LlmModelConfigEntity>();
+        entity.ToTable("llm_model_configs");
+        ConfigureEntityBase(entity);
+
+        entity.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.Property(x => x.WorkspaceId).HasColumnName("workspace_id").IsRequired();
+        entity.Property(x => x.ApplicationId).HasColumnName("application_id");
+        entity.Property(x => x.Name).HasColumnName("name").IsRequired();
+        entity.Property(x => x.Provider).HasColumnName("provider").HasConversion<int>();
+        entity.Property(x => x.Model).HasColumnName("model").IsRequired();
+        entity.Property(x => x.Endpoint).HasColumnName("endpoint").IsRequired();
+        entity.Property(x => x.DeploymentName).HasColumnName("deployment_name");
+        entity.Property(x => x.Status).HasColumnName("status").HasConversion<int>();
+        entity.Property(x => x.Priority).HasColumnName("priority");
+        entity.Property(x => x.FallbackModelConfigId).HasColumnName("fallback_model_config_id");
+        entity.Property(x => x.TimeoutSeconds).HasColumnName("timeout_seconds");
+        entity.Property(x => x.FailureThreshold).HasColumnName("failure_threshold");
+        entity.Property(x => x.CircuitBreakSeconds).HasColumnName("circuit_break_seconds");
+        entity.Property(x => x.PromptTokenPricePer1K).HasColumnName("prompt_token_price_per_1k").HasPrecision(12, 6);
+        entity.Property(x => x.CompletionTokenPricePer1K).HasColumnName("completion_token_price_per_1k").HasPrecision(12, 6);
+        entity.Property(x => x.ParametersJson).HasColumnName("parameters").HasColumnType("jsonb");
+        entity.Property(x => x.CredentialsJson).HasColumnName("credentials").HasColumnType("jsonb");
+
+        entity.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.ApplicationId, x.Status, x.Priority }).HasDatabaseName("idx_llm_model_configs_route");
+        entity.HasIndex(x => x.FallbackModelConfigId).HasDatabaseName("idx_llm_model_configs_fallback");
+    }
+
+    static void ConfigureLlmInvocationLog(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<LlmInvocationLogEntity>();
+        entity.ToTable("llm_invocation_logs");
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id).HasColumnName("id");
+        entity.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.Property(x => x.WorkspaceId).HasColumnName("workspace_id").IsRequired();
+        entity.Property(x => x.ApplicationId).HasColumnName("application_id");
+        entity.Property(x => x.ModelConfigId).HasColumnName("model_config_id");
+        entity.Property(x => x.ModelConfigName).HasColumnName("model_config_name").IsRequired();
+        entity.Property(x => x.Provider).HasColumnName("provider").HasConversion<int>();
+        entity.Property(x => x.Model).HasColumnName("model").IsRequired();
+        entity.Property(x => x.RequestJson).HasColumnName("request").HasColumnType("jsonb");
+        entity.Property(x => x.ResponseJson).HasColumnName("response").HasColumnType("jsonb");
+        entity.Property(x => x.Status).HasColumnName("status").HasConversion<int>();
+        entity.Property(x => x.UsedFallback).HasColumnName("used_fallback");
+        entity.Property(x => x.PromptTokens).HasColumnName("prompt_tokens");
+        entity.Property(x => x.CompletionTokens).HasColumnName("completion_tokens");
+        entity.Property(x => x.TotalTokens).HasColumnName("total_tokens");
+        entity.Property(x => x.DurationMs).HasColumnName("duration_ms");
+        entity.Property(x => x.ErrorMessage).HasColumnName("error_message");
+        entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+
+        entity.HasIndex(x => new { x.TenantId, x.CreatedAt }).HasDatabaseName("idx_llm_invocation_logs_tenant_time");
+        entity.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.ApplicationId, x.CreatedAt }).HasDatabaseName("idx_llm_invocation_logs_scope_time");
+        entity.HasIndex(x => new { x.ModelConfigId, x.CreatedAt }).HasDatabaseName("idx_llm_invocation_logs_model_time");
+    }
+
+    static void ConfigureLlmCircuitBreaker(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<LlmCircuitBreakerEntity>();
+        entity.ToTable("llm_circuit_breakers");
+        entity.HasKey(x => x.ModelConfigId);
+
+        entity.Property(x => x.ModelConfigId).HasColumnName("model_config_id");
+        entity.Property(x => x.State).HasColumnName("state").HasConversion<int>();
+        entity.Property(x => x.FailureCount).HasColumnName("failure_count");
+        entity.Property(x => x.OpenedUntil).HasColumnName("opened_until");
+        entity.Property(x => x.LastFailureAt).HasColumnName("last_failure_at");
+        entity.Property(x => x.LastSuccessAt).HasColumnName("last_success_at");
+        entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+
+        entity.HasIndex(x => new { x.State, x.OpenedUntil }).HasDatabaseName("idx_llm_circuit_breakers_state");
     }
 
     /// <summary>

@@ -3,13 +3,17 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Omnis.DocumentX.Knowledge;
+using Omnis.EfCore.Npgsql.Channel.Services;
 using Omnis.EfCore.Npgsql.Chat.Services;
 using Omnis.EfCore.Npgsql.Initialization;
 using Omnis.EfCore.Npgsql.Knowledge.Services;
+using Omnis.EfCore.Npgsql.Llm.Services;
 using Omnis.EfCore.Npgsql.Options;
 using Omnis.EfCore.Npgsql.Rag.Services;
 using Omnis.EfCore.Npgsql.Vector;
+using Omnis.Llm;
 using Omnis.Retrieval.Rag;
+using Omnis.Workflow.Channel;
 using Omnis.Workflow.Chat;
 
 namespace Omnis.EfCore.Npgsql;
@@ -44,6 +48,9 @@ public static class OmnisNpgsqlServiceCollectionExtensions
 
         // 对话引擎使用 PostgreSQL 保存会话、消息、反馈和人工转接记录。
         services.AddScoped<IConversationService, PostgresConversationService>();
+        services.AddScoped<IChannelService, PostgresChannelService>();
+        services.AddLlmGatewayCore();
+        services.AddScoped<ILlmGatewayStore, PostgresLlmGatewayStore>();
 
         services.AddSingleton<IHostedService, PostgresSchemaInitializer>();
 

@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Omnis.Contracts\Omnis.Contracts.csproj" />
     <ProjectReference Include="..\Omnis.DocumentX\Omnis.DocumentX.csproj" />
     <ProjectReference Include="..\Omnis.EfCore.Npgsql\Omnis.EfCore.Npgsql.csproj" />
+    <ProjectReference Include="..\Omnis.Llm\Omnis.Llm.csproj" />
     <ProjectReference Include="..\Omnis.Retrieval\Omnis.Retrieval.csproj" />
   </ItemGroup>
 

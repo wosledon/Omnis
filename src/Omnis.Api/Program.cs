@@ -29,5 +29,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 app.MapKnowledgeEndpoints();
 app.MapRagEndpoints();
 app.MapConversationEndpoints();
+app.MapChannelEndpoints();
+app.MapLlmEndpoints();
 
 app.Run();
