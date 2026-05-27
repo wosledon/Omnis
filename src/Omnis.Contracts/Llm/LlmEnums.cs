@@ -11,6 +11,8 @@ public enum LlmProviderType
     AzureOpenAI = 1,
     /// <summary>兼容 OpenAI Chat Completions 协议的第三方或本地网关。</summary>
     OpenAICompatible = 2,
+    /// <summary>火山方舟豆包模型服务，复用 OpenAI Chat Completions 兼容协议。</summary>
+    DoubaoArk = 3,
     /// <summary>Ollama 本地模型服务，预留给 v0.5 之后接入。</summary>
     Ollama = 10,
     /// <summary>vLLM 本地或私有化部署服务，预留给 v0.5 之后接入。</summary>

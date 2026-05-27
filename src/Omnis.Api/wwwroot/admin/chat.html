@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Omnis AI 客服</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #1f2933;
+      --muted: #667085;
+      --line: #d8dee8;
+      --soft: #eef3f7;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --indigo: #4f46e5;
+      --warn: #b45309;
+      --bad: #b42318;
+      --good: #047857;
+      --shadow: 0 14px 34px rgba(31, 41, 51, .08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .shell {
+      display: grid;
+      gap: 16px;
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 52px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 14px 0;
+    }
+
+    .panel-body {
+      padding: 14px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 7px 9px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .14);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 7px 12px;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: var(--accent-strong);
+    }
+
+    .btn.secondary {
+      border-color: #c7d2fe;
+      color: var(--indigo);
+    }
+
+    .btn:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    .kb-list {
+      display: grid;
+      gap: 8px;
+      max-height: 310px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .kb-item {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+    }
+
+    .kb-item.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .12);
+    }
+
+    .kb-item input {
+      width: 16px;
+      min-height: 16px;
+      margin-top: 2px;
+    }
+
+    .name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 650;
+    }
+
+    .meta {
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #eef1f5;
+    }
+
+    .tab {
+      min-height: 30px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: #fff;
+      color: var(--ink);
+      box-shadow: 0 1px 5px rgba(28, 37, 49, .09);
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: grid;
+      gap: 12px;
+    }
+
+    .chat-box {
+      display: grid;
+      gap: 10px;
+      min-height: 260px;
+      max-height: 430px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      padding: 10px;
+    }
+
+    .bubble {
+      max-width: 84%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 9px 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .bubble.user {
+      justify-self: end;
+      border-color: #b6d8d3;
+      background: #eefaf8;
+    }
+
+    .bubble.assistant {
+      justify-self: start;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 2px 8px;
+      background: #6b7280;
+      color: #fff;
+      font-size: 12px;
+    }
+
+    .pill.good {
+      background: var(--good);
+    }
+
+    .pill.warn {
+      background: var(--warn);
+    }
+
+    .pill.bad {
+      background: var(--bad);
+    }
+
+    .result {
+      min-height: 150px;
+      max-height: 380px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      padding: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .status {
+      min-height: 20px;
+      color: var(--muted);
+    }
+
+    .status.error {
+      color: var(--bad);
+    }
+
+    .status.ok {
+      color: var(--good);
+    }
+
+    @media (max-width: 1050px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .shell {
+        padding: 12px;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+        padding-bottom: 12px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .field.full {
+        grid-column: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <h1>Omnis AI 客服</h1>
+      <div class="toolbar">
+        <a class="btn" href="/admin/knowledge.html">知识库</a>
+        <a class="btn" href="/admin/llm.html">LLM 网关</a>
+        <button class="btn" id="refreshKbBtn" type="button">刷新知识库</button>
+      </div>
+    </header>
+
+    <section class="layout">
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>调用范围</h2>
+          <button class="btn secondary" id="selectAllKbBtn" type="button">全选</button>
+        </div>
+        <div class="panel-body stack">
+          <div class="grid">
+            <div class="field">
+              <label for="tenantId">租户</label>
+              <input id="tenantId" value="default-tenant">
+            </div>
+            <div class="field">
+              <label for="workspaceId">工作空间</label>
+              <input id="workspaceId" value="default-workspace">
+            </div>
+            <div class="field">
+              <label for="applicationId">应用</label>
+              <input id="applicationId" placeholder="可选">
+            </div>
+            <div class="field">
+              <label for="channel">渠道</label>
+              <input id="channel" value="web_widget">
+            </div>
+            <div class="field">
+              <label for="userId">用户 ID</label>
+              <input id="userId" value="user_001">
+            </div>
+            <div class="field">
+              <label for="userName">用户名称</label>
+              <input id="userName" value="测试用户">
+            </div>
+            <div class="field full">
+              <label for="userGroups">用户组</label>
+              <input id="userGroups" placeholder="group_sales, group_vip">
+            </div>
+            <div class="field full">
+              <label for="userRoles">角色</label>
+              <input id="userRoles" value="role_support">
+            </div>
+          </div>
+
+          <div class="kb-list" id="kbList"></div>
+          <div class="status" id="scopeStatus"></div>
+        </div>
+      </aside>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="conversation" type="button">客服会话</button>
+            <button class="tab" data-tab="rag" type="button">RAG 测试</button>
+          </div>
+          <span class="meta" id="conversationText">未创建会话</span>
+        </div>
+
+        <div class="panel-body">
+          <section class="section active" id="conversationSection">
+            <div class="toolbar">
+              <button class="btn primary" id="createConversationBtn" type="button">创建会话</button>
+              <button class="btn" id="loadMessagesBtn" type="button">加载消息</button>
+            </div>
+            <div class="chat-box" id="chatBox"></div>
+            <div class="field">
+              <label for="messageInput">用户消息</label>
+              <textarea id="messageInput">请根据知识库介绍一下相关政策。</textarea>
+            </div>
+            <div class="grid">
+              <div class="field">
+                <label for="minScore">相关性阈值</label>
+                <input id="minScore" type="number" min="0" max="1" step="0.05" value="0.1">
+              </div>
+              <div class="field">
+                <label for="contextTopN">上下文数量</label>
+                <input id="contextTopN" type="number" min="1" max="12" value="5">
+              </div>
+              <div class="field">
+                <label for="conversationStrictBoundary">知识边界</label>
+                <select id="conversationStrictBoundary">
+                  <option value="false" selected>宽松</option>
+                  <option value="true">严格</option>
+                </select>
+              </div>
+            </div>
+            <div class="toolbar">
+              <button class="btn primary" id="sendMessageBtn" type="button">发送</button>
+            </div>
+            <div class="status" id="conversationStatus"></div>
+          </section>
+
+          <section class="section" id="ragSection">
+            <div class="field">
+              <label for="ragQuestion">问题</label>
+              <textarea id="ragQuestion">请根据知识库介绍一下相关政策。</textarea>
+            </div>
+            <div class="grid">
+              <div class="field">
+                <label for="ragRetrievalTopK">检索数量</label>
+                <input id="ragRetrievalTopK" type="number" min="1" max="20" value="8">
+              </div>
+              <div class="field">
+                <label for="ragContextTopN">上下文数量</label>
+                <input id="ragContextTopN" type="number" min="1" max="12" value="5">
+              </div>
+              <div class="field">
+                <label for="ragMinScore">相关性阈值</label>
+                <input id="ragMinScore" type="number" min="0" max="1" step="0.05" value="0.1">
+              </div>
+              <div class="field">
+                <label for="strictBoundary">知识边界</label>
+                <select id="strictBoundary">
+                  <option value="true" selected>严格</option>
+                  <option value="false">宽松</option>
+                </select>
+              </div>
+            </div>
+            <div class="toolbar">
+              <button class="btn primary" id="ragAskBtn" type="button">生成回答</button>
+            </div>
+            <div class="status" id="ragStatus"></div>
+            <div class="result" id="ragResult"></div>
+          </section>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      knowledgeBases: [],
+      selectedKnowledgeBaseIds: new Set(),
+      conversationId: null
+    };
+    const $ = (id) => document.getElementById(id);
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => setTab(tab.dataset.tab));
+    });
+    $("refreshKbBtn").addEventListener("click", loadKnowledgeBases);
+    $("selectAllKbBtn").addEventListener("click", selectAllKnowledgeBases);
+    $("createConversationBtn").addEventListener("click", createConversation);
+    $("sendMessageBtn").addEventListener("click", sendMessage);
+    $("loadMessagesBtn").addEventListener("click", loadMessages);
+    $("ragAskBtn").addEventListener("click", askRag);
+    $("tenantId").addEventListener("change", loadKnowledgeBases);
+    $("workspaceId").addEventListener("change", loadKnowledgeBases);
+
+    loadKnowledgeBases();
+
+    function setTab(name) {
+      document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
+      document.querySelectorAll(".section").forEach((section) => section.classList.remove("active"));
+      $(`${name}Section`).classList.add("active");
+    }
+
+    async function loadKnowledgeBases() {
+      const params = new URLSearchParams({ tenantId: scope().tenantId });
+      if (scope().workspaceId) params.set("workspaceId", scope().workspaceId);
+
+      try {
+        setStatus("scopeStatus", "加载中...");
+        const data = await requestJson(`/api/knowledge-bases?${params}`);
+        state.knowledgeBases = data;
+        data.forEach((kb) => {
+          if (state.selectedKnowledgeBaseIds.size === 0) state.selectedKnowledgeBaseIds.add(kb.id);
+        });
+        renderKnowledgeBases();
+        setStatus("scopeStatus", `${data.length} 个知识库`, "ok");
+      } catch (error) {
+        setStatus("scopeStatus", error.message, "error");
+      }
+    }
+
+    function renderKnowledgeBases() {
+      const list = $("kbList");
+      list.innerHTML = "";
+      if (state.knowledgeBases.length === 0) {
+        list.innerHTML = `<div class="meta">暂无知识库</div>`;
+        return;
+      }
+
+      state.knowledgeBases.forEach((kb) => {
+        const item = document.createElement("label");
+        item.className = `kb-item ${state.selectedKnowledgeBaseIds.has(kb.id) ? "active" : ""}`;
+        item.innerHTML = `
+          <input type="checkbox" ${state.selectedKnowledgeBaseIds.has(kb.id) ? "checked" : ""}>
+          <span>
+            <span class="name">${escapeHtml(kb.name)}</span>
+            <span class="meta">${escapeHtml(kb.id)}</span>
+          </span>
+        `;
+        item.querySelector("input").addEventListener("change", (event) => {
+          if (event.target.checked) {
+            state.selectedKnowledgeBaseIds.add(kb.id);
+          } else {
+            state.selectedKnowledgeBaseIds.delete(kb.id);
+          }
+          renderKnowledgeBases();
+        });
+        list.appendChild(item);
+      });
+    }
+
+    function selectAllKnowledgeBases() {
+      state.knowledgeBases.forEach((kb) => state.selectedKnowledgeBaseIds.add(kb.id));
+      renderKnowledgeBases();
+    }
+
+    async function createConversation() {
+      const selected = selectedKnowledgeBaseIds();
+      if (selected.length === 0) {
+        setStatus("conversationStatus", "请选择知识库", "error");
+        return;
+      }
+
+      try {
+        setBusy("createConversationBtn", true);
+        setStatus("conversationStatus", "创建中...");
+        const result = await requestJson("/api/conversations", {
+          method: "POST",
+          body: {
+            tenantId: scope().tenantId,
+            workspaceId: scope().workspaceId,
+            applicationId: optional($("applicationId").value),
+            channel: $("channel").value.trim() || "web_widget",
+            user: {
+              id: $("userId").value.trim() || "user_001",
+              name: optional($("userName").value),
+              groups: csv($("userGroups").value),
+              roles: csv($("userRoles").value)
+            },
+            knowledgeBaseIds: selected
+          }
+        });
+        state.conversationId = result.conversationId;
+        $("conversationText").textContent = result.conversationId;
+        $("chatBox").innerHTML = "";
+        setStatus("conversationStatus", "会话已创建", "ok");
+      } catch (error) {
+        setStatus("conversationStatus", error.message, "error");
+      } finally {
+        setBusy("createConversationBtn", false);
+      }
+    }
+
+    async function sendMessage() {
+      if (!state.conversationId) {
+        await createConversation();
+        if (!state.conversationId) return;
+      }
+
+      const content = $("messageInput").value.trim();
+      if (!content) {
+        setStatus("conversationStatus", "消息不能为空", "error");
+        return;
+      }
+
+      try {
+        setBusy("sendMessageBtn", true);
+        appendBubble("user", content);
+        setStatus("conversationStatus", "生成中...");
+        const result = await requestJson(`/api/conversations/${state.conversationId}/messages`, {
+          method: "POST",
+          body: {
+            content,
+            stream: false,
+            knowledgeBaseIds: selectedKnowledgeBaseIds(),
+            options: {
+              retrievalTopK: 8,
+              contextTopN: numberValue("contextTopN", 5),
+              maxHistoryTurns: 10,
+              minRelevanceScore: numberValue("minScore", 0.1),
+              handoffConfidenceThreshold: 0.6,
+              strictKnowledgeBoundary: $("conversationStrictBoundary").value === "true"
+            }
+          }
+        });
+        appendAssistant(result);
+        setStatus("conversationStatus", "已回复", "ok");
+      } catch (error) {
+        setStatus("conversationStatus", error.message, "error");
+      } finally {
+        setBusy("sendMessageBtn", false);
+      }
+    }
+
+    async function loadMessages() {
+      if (!state.conversationId) {
+        setStatus("conversationStatus", "请先创建会话", "error");
+        return;
+      }
+
+      try {
+        const messages = await requestJson(`/api/conversations/${state.conversationId}/messages`);
+        $("chatBox").innerHTML = "";
+        messages.forEach((message) => {
+          const role = message.role === 0 ? "user" : "assistant";
+          appendBubble(role, message.content, message);
+        });
+        setStatus("conversationStatus", `${messages.length} 条消息`, "ok");
+      } catch (error) {
+        setStatus("conversationStatus", error.message, "error");
+      }
+    }
+
+    async function askRag() {
+      const selected = selectedKnowledgeBaseIds();
+      if (selected.length === 0) {
+        setStatus("ragStatus", "请选择知识库", "error");
+        return;
+      }
+
+      try {
+        setBusy("ragAskBtn", true);
+        setStatus("ragStatus", "生成中...");
+        const result = await requestJson("/api/rag/answer", {
+          method: "POST",
+          body: {
+            tenantId: scope().tenantId,
+            workspaceId: scope().workspaceId,
+            applicationId: optional($("applicationId").value),
+            userId: $("userId").value.trim() || "user_001",
+            userGroups: csv($("userGroups").value),
+            userRoles: csv($("userRoles").value),
+            knowledgeBaseIds: selected,
+            question: $("ragQuestion").value.trim(),
+            conversationHistory: [],
+            options: {
+              retrievalTopK: numberValue("ragRetrievalTopK", 8),
+              contextTopN: numberValue("ragContextTopN", 5),
+              maxHistoryTurns: 10,
+              minRelevanceScore: numberValue("ragMinScore", 0.1),
+              handoffConfidenceThreshold: 0.6,
+              strictKnowledgeBoundary: $("strictBoundary").value === "true"
+            }
+          }
+        });
+        $("ragResult").textContent = formatRagResult(result);
+        setStatus("ragStatus", "已生成", "ok");
+      } catch (error) {
+        setStatus("ragStatus", error.message, "error");
+      } finally {
+        setBusy("ragAskBtn", false);
+      }
+    }
+
+    function appendAssistant(result) {
+      const meta = {
+        confidenceScore: result.confidenceScore,
+        citations: result.citations,
+        handoffSuggested: result.handoffSuggested,
+        knowledgeBoundaryTriggered: result.knowledgeBoundaryTriggered
+      };
+      appendBubble("assistant", result.answer, meta);
+    }
+
+    function appendBubble(role, content, meta = null) {
+      const bubble = document.createElement("div");
+      bubble.className = `bubble ${role}`;
+      bubble.innerHTML = `<div>${escapeHtml(content)}</div>`;
+      if (meta) {
+        const citations = meta.citations || [];
+        const chips = [];
+        if (typeof meta.confidenceScore === "number") chips.push(`<span class="pill good">置信度 ${meta.confidenceScore}</span>`);
+        if (meta.handoffSuggested) chips.push(`<span class="pill warn">建议转人工</span>`);
+        if (meta.knowledgeBoundaryTriggered) chips.push(`<span class="pill bad">知识边界</span>`);
+        citations.forEach((citation) => chips.push(`<span class="pill">${escapeHtml(citation.id || citation.title)}</span>`));
+        if (chips.length > 0) bubble.innerHTML += `<div class="pill-row">${chips.join("")}</div>`;
+      }
+      $("chatBox").appendChild(bubble);
+      $("chatBox").scrollTop = $("chatBox").scrollHeight;
+    }
+
+    function formatRagResult(result) {
+      const lines = [
+        result.answer,
+        "",
+        `置信度: ${result.confidenceScore}`,
+        `建议转人工: ${result.handoffSuggested}`,
+        `知识边界: ${result.knowledgeBoundaryTriggered}`,
+        "",
+        "引用:",
+        ...(result.citations || []).map((item) => `- ${item.id} ${item.title} ${item.url}`),
+        "",
+        "检索分片:",
+        ...(result.retrievedChunks || []).map((item) => `- ${item.title} #${item.chunkIndex} score=${item.rerankScore ?? item.fusedScore}\n  ${item.contentPreview}`)
+      ];
+      return lines.join("\n");
+    }
+
+    async function requestJson(url, options = {}) {
+      const init = {
+        method: options.method || "GET",
+        headers: { "Content-Type": "application/json" }
+      };
+      if (options.body) init.body = JSON.stringify(options.body);
+
+      const response = await fetch(url, init);
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!response.ok) throw new Error(data?.error || response.statusText);
+      return data;
+    }
+
+    function scope() {
+      return {
+        tenantId: $("tenantId").value.trim() || "default-tenant",
+        workspaceId: $("workspaceId").value.trim() || "default-workspace"
+      };
+    }
+
+    function selectedKnowledgeBaseIds() {
+      return Array.from(state.selectedKnowledgeBaseIds);
+    }
+
+    function csv(value) {
+      return String(value || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+    }
+
+    function optional(value) {
+      const normalized = String(value || "").trim();
+      return normalized.length === 0 ? null : normalized;
+    }
+
+    function numberValue(id, fallback) {
+      const value = Number($(id).value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function setBusy(id, busy) {
+      $(id).disabled = busy;
+    }
+
+    function setStatus(id, message, kind = "") {
+      const target = $(id);
+      target.textContent = message;
+      target.className = `status ${kind}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+  </script>
+</body>
+</html>

@@ -37,9 +37,9 @@ internal sealed class PostgresKnowledgeService(
         var entity = new KnowledgeBaseEntity
         {
             Id = Guid.NewGuid(),
-            TenantId = request.TenantId.Trim(),
-            WorkspaceId = request.WorkspaceId.Trim(),
-            Name = request.Name.Trim(),
+            TenantId = NormalizeRequired(request.TenantId),
+            WorkspaceId = NormalizeRequired(request.WorkspaceId),
+            Name = NormalizeRequired(request.Name),
             Description = NormalizeOptional(request.Description),
             DefaultVisibility = request.DefaultVisibility,
             CreatedAt = now,
@@ -112,15 +112,16 @@ internal sealed class PostgresKnowledgeService(
         }
 
         var now = DateTime.UtcNow;
+        var safeFileName = NormalizeRequired(fileName);
         var document = new KnowledgeDocumentEntity
         {
             Id = Guid.NewGuid(),
-            TenantId = options.TenantId.Trim(),
-            WorkspaceId = options.WorkspaceId.Trim(),
+            TenantId = NormalizeRequired(options.TenantId),
+            WorkspaceId = NormalizeRequired(options.WorkspaceId),
             KnowledgeBaseId = knowledgeBaseId,
-            Name = fileName,
+            Name = safeFileName,
             SourceType = DocumentSourceType.Upload,
-            FileUri = $"postgres://knowledge_documents/{Guid.NewGuid()}-{fileName}",
+            FileUri = $"postgres://knowledge_documents/{Guid.NewGuid()}-{safeFileName}",
             Status = DocumentStatus.Processing,
             Visibility = options.Visibility,
             Tags = NormalizeTags(options.Tags),
@@ -421,6 +422,7 @@ internal sealed class PostgresKnowledgeService(
     DocumentChunkEntity CreateChunkEntity(KnowledgeDocumentEntity document, int index, string content, string aclHash)
     {
         var now = DateTime.UtcNow;
+        var safeContent = RemovePostgresInvalidText(content);
         return new DocumentChunkEntity
         {
             Id = Guid.NewGuid(),
@@ -429,9 +431,9 @@ internal sealed class PostgresKnowledgeService(
             KnowledgeBaseId = document.KnowledgeBaseId,
             DocumentId = document.Id,
             ChunkIndex = index,
-            Content = content,
-            ContentHash = ComputeHash(content),
-            EmbeddingId = embeddingGenerator.GenerateEmbeddingId(content),
+            Content = safeContent,
+            ContentHash = ComputeHash(safeContent),
+            EmbeddingId = embeddingGenerator.GenerateEmbeddingId(safeContent),
             AclHash = aclHash,
             CreatedAt = now,
             UpdatedAt = now
@@ -562,7 +564,7 @@ internal sealed class PostgresKnowledgeService(
     {
         return entries
             .Where(entry => !string.IsNullOrWhiteSpace(entry.PrincipalId))
-            .Select(entry => entry with { PrincipalId = entry.PrincipalId.Trim() })
+            .Select(entry => entry with { PrincipalId = NormalizeRequired(entry.PrincipalId) })
             .Distinct()
             .ToArray();
     }
@@ -586,7 +588,76 @@ internal sealed class PostgresKnowledgeService(
     /// </summary>
     static string? NormalizeOptional(string? value)
     {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = RemovePostgresInvalidText(value).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    /// <summary>
+    /// 规范化必填字符串，移除 PostgreSQL text 不支持的 NUL 字符。
+    /// </summary>
+    static string NormalizeRequired(string value)
+    {
+        return RemovePostgresInvalidText(value).Trim();
+    }
+
+    /// <summary>
+    /// PostgreSQL text/json fields cannot store NUL bytes or invalid Unicode surrogate pairs.
+    /// </summary>
+    static string RemovePostgresInvalidText(string value)
+    {
+        var hasInvalid = false;
+        for (var index = 0; index < value.Length; index++)
+        {
+            var current = value[index];
+            if (current == '\0' || char.IsLowSurrogate(current))
+            {
+                hasInvalid = true;
+                break;
+            }
+
+            if (char.IsHighSurrogate(current)
+                && (index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1])))
+            {
+                hasInvalid = true;
+                break;
+            }
+        }
+
+        if (!hasInvalid)
+        {
+            return value;
+        }
+
+        var builder = new StringBuilder(value.Length);
+        for (var index = 0; index < value.Length; index++)
+        {
+            var current = value[index];
+            if (current == '\0' || char.IsLowSurrogate(current))
+            {
+                continue;
+            }
+
+            if (char.IsHighSurrogate(current))
+            {
+                if (index + 1 < value.Length && char.IsLowSurrogate(value[index + 1]))
+                {
+                    builder.Append(current);
+                    builder.Append(value[index + 1]);
+                    index++;
+                }
+
+                continue;
+            }
+
+            builder.Append(current);
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>

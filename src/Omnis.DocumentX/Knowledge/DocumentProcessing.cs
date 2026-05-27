@@ -129,12 +129,68 @@ internal sealed class DocumentTextExtractor : IDocumentTextExtractor
     /// </summary>
     static string Normalize(string text)
     {
-        text = text.Replace("\r\n", "\n", StringComparison.Ordinal)
+        text = RemovePostgresInvalidText(text)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n');
         text = Regex.Replace(text, @"[ \t]+", " ");
         text = Regex.Replace(text, @"\n{3,}", "\n\n");
 
         return text.Trim();
+    }
+
+    /// <summary>
+    /// PostgreSQL text/json fields cannot store NUL bytes or invalid Unicode surrogate pairs.
+    /// </summary>
+    static string RemovePostgresInvalidText(string value)
+    {
+        var hasInvalid = false;
+        for (var index = 0; index < value.Length; index++)
+        {
+            var current = value[index];
+            if (current == '\0' || char.IsLowSurrogate(current))
+            {
+                hasInvalid = true;
+                break;
+            }
+
+            if (char.IsHighSurrogate(current)
+                && (index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1])))
+            {
+                hasInvalid = true;
+                break;
+            }
+        }
+
+        if (!hasInvalid)
+        {
+            return value;
+        }
+
+        var builder = new StringBuilder(value.Length);
+        for (var index = 0; index < value.Length; index++)
+        {
+            var current = value[index];
+            if (current == '\0' || char.IsLowSurrogate(current))
+            {
+                continue;
+            }
+
+            if (char.IsHighSurrogate(current))
+            {
+                if (index + 1 < value.Length && char.IsLowSurrogate(value[index + 1]))
+                {
+                    builder.Append(current);
+                    builder.Append(value[index + 1]);
+                    index++;
+                }
+
+                continue;
+            }
+
+            builder.Append(current);
+        }
+
+        return builder.ToString();
     }
 }
 

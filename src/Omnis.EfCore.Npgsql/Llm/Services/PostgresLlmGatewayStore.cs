@@ -294,8 +294,8 @@ internal sealed class PostgresLlmGatewayStore(OmnisNpgsqlDbContext dbContext) : 
             ModelConfigName = record.ModelConfigName,
             Provider = record.Provider,
             Model = record.Model,
-            RequestJson = record.RequestJson,
-            ResponseJson = record.ResponseJson,
+            RequestJson = NormalizeJsonDocument(record.RequestJson),
+            ResponseJson = NormalizeJsonDocument(record.ResponseJson),
             Status = record.Status,
             UsedFallback = record.UsedFallback,
             PromptTokens = record.PromptTokens,
@@ -491,6 +491,24 @@ internal sealed class PostgresLlmGatewayStore(OmnisNpgsqlDbContext dbContext) : 
     static string ToJson<T>(T value)
     {
         return JsonSerializer.Serialize(value, JsonOptions);
+    }
+
+    static string NormalizeJsonDocument(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "{}";
+        }
+
+        try
+        {
+            using var _ = JsonDocument.Parse(value);
+            return value;
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.Serialize(new { raw = value }, JsonOptions);
+        }
     }
 
     static T? FromJson<T>(string json)

@@ -44,6 +44,7 @@ public static class OmnisNpgsqlServiceCollectionExtensions
         // RAG 引擎核心逻辑在 Retrieval 项目中，Npgsql 层提供检索器和观测日志落库实现。
         services.AddRagEngineCore();
         services.AddScoped<IHybridRetriever, PostgresHybridRetriever>();
+        services.AddScoped<IRagAnswerGenerator, LlmRagAnswerGenerator>();
         services.AddScoped<IRagObservationSink, PostgresRagObservationSink>();
 
         // 对话引擎使用 PostgreSQL 保存会话、消息、反馈和人工转接记录。

@@ -7,7 +7,7 @@ using Omnis.Contracts.Llm;
 namespace Omnis.Llm.Providers;
 
 /// <summary>
-/// OpenAI Chat Completions 兼容客户端，覆盖 OpenAI、Azure OpenAI 和兼容协议网关。
+/// OpenAI Chat Completions 兼容客户端，覆盖 OpenAI、Azure OpenAI、豆包火山方舟和兼容协议网关。
 /// </summary>
 internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory) : ILlmProviderClient
 {
@@ -77,6 +77,10 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory) : I
         var uri = BuildUri(request.Config);
         var message = new HttpRequestMessage(HttpMethod.Post, uri);
         var apiKey = GetCredential(request.Config, "apiKey");
+        if (RequiresApiKey(request.Config.Provider) && string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException($"LLM provider {request.Config.Provider} requires credentials.apiKey.");
+        }
 
         if (request.Config.Provider == LlmProviderType.AzureOpenAI)
         {
@@ -121,7 +125,7 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory) : I
     {
         var body = new Dictionary<string, object?>
         {
-            ["model"] = request.Config.Model,
+            ["model"] = ResolveProviderModel(request.Config),
             ["messages"] = request.Messages.Select(ToProviderMessage).ToArray(),
             ["stream"] = stream
         };
@@ -259,9 +263,51 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory) : I
     static bool IsReservedParameter(string key)
     {
         return key.Equals("apiVersion", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("providerModel", StringComparison.OrdinalIgnoreCase)
             || key.Equals("stream", StringComparison.OrdinalIgnoreCase)
             || key.Equals("model", StringComparison.OrdinalIgnoreCase)
             || key.Equals("messages", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static string ResolveProviderModel(LlmModelConfigRecord config)
+    {
+        if (config.Parameters.TryGetValue("providerModel", out var providerModel) &&
+            !string.IsNullOrWhiteSpace(providerModel))
+        {
+            return NormalizeDoubaoModel(config.Provider, providerModel.Trim());
+        }
+
+        if (config.Provider == LlmProviderType.DoubaoArk)
+        {
+            // 管理页保留展示名，实际请求方舟时使用火山方舟的版本化模型 ID。
+            return NormalizeDoubaoModel(config.Provider, config.Model);
+        }
+
+        return config.Model;
+    }
+
+    static string NormalizeDoubaoModel(LlmProviderType provider, string model)
+    {
+        if (provider != LlmProviderType.DoubaoArk)
+        {
+            return model;
+        }
+
+        return model switch
+        {
+            "Doubao-1.5-lite-32k" => "doubao-1-5-lite-32k-250115",
+            "Doubao-1.5-pro-32k" => "doubao-1-5-pro-32k-250115",
+            "doubao-1.5-lite-32k" => "doubao-1-5-lite-32k-250115",
+            "doubao-1.5-pro-32k" => "doubao-1-5-pro-32k-250115",
+            "doubao-1-5-lite-32k" => "doubao-1-5-lite-32k-250115",
+            "doubao-1-5-pro-32k" => "doubao-1-5-pro-32k-250115",
+            _ => model
+        };
+    }
+
+    static bool RequiresApiKey(LlmProviderType provider)
+    {
+        return provider is LlmProviderType.OpenAI or LlmProviderType.AzureOpenAI or LlmProviderType.DoubaoArk;
     }
 
     static string NormalizeEndpoint(string endpoint)

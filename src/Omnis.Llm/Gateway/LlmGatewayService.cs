@@ -57,6 +57,12 @@ internal sealed class LlmGatewayService(
         ValidateCompletionRequest(request);
         var candidates = await ResolveRouteAsync(request, cancellationToken);
         Exception? lastError = null;
+        var failureSummaries = new List<string>();
+
+        if (candidates.Count == 0)
+        {
+            throw new InvalidOperationException(await BuildNoCandidateMessageAsync(request, cancellationToken));
+        }
 
         // 候选模型已经按应用优先级和 fallback 链路排好序，这里顺序尝试直到成功或全部失败。
         for (var index = 0; index < candidates.Count; index++)
@@ -64,6 +70,7 @@ internal sealed class LlmGatewayService(
             var candidate = candidates[index];
             if (await IsCircuitOpenAsync(candidate, cancellationToken))
             {
+                failureSummaries.Add(FormatCircuitOpenMessage(candidate));
                 continue;
             }
 
@@ -75,6 +82,7 @@ internal sealed class LlmGatewayService(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 lastError = ex;
+                failureSummaries.Add(FormatFailureMessage(candidate, ex));
                 await store.RecordCircuitFailureAsync(
                     candidate.Id,
                     candidate.FailureThreshold,
@@ -85,7 +93,11 @@ internal sealed class LlmGatewayService(
             }
         }
 
-        throw new InvalidOperationException("No available LLM model configuration could complete the request.", lastError);
+        var message = failureSummaries.Count == 0
+            ? "No available LLM model configuration could complete the request."
+            : $"No available LLM model configuration could complete the request. Failures: {string.Join(" | ", failureSummaries)}";
+
+        throw new InvalidOperationException(message, lastError);
     }
 
     public async IAsyncEnumerable<LlmStreamChunk> StreamAsync(
@@ -191,7 +203,7 @@ internal sealed class LlmGatewayService(
                 candidate.Provider,
                 candidate.Model,
                 ToJson(new { request.Messages, request.Temperature, request.MaxTokens, request.Metadata }),
-                string.Empty,
+                ToJson(new { error = exception.Message, exceptionType = exception.GetType().Name }),
                 LlmInvocationStatus.Failed,
                 usedFallback,
                 0,
@@ -216,7 +228,7 @@ internal sealed class LlmGatewayService(
 
         if (candidates.Count == 0)
         {
-            throw new InvalidOperationException("No active LLM model configuration matched the request scope.");
+            return Array.Empty<LlmModelConfigRecord>();
         }
 
         var result = new List<LlmModelConfigRecord>();
@@ -312,6 +324,52 @@ internal sealed class LlmGatewayService(
     static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    async Task<string> BuildNoCandidateMessageAsync(
+        LlmCompletionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var scope = BuildScopeDescription(request);
+        if (!request.ModelConfigId.HasValue)
+        {
+            return $"No active LLM model configuration matched the request scope. {scope}";
+        }
+
+        var selected = await store.GetModelConfigAsync(request.ModelConfigId.Value, cancellationToken);
+        if (selected is null)
+        {
+            return $"No active LLM model configuration matched the request scope. {scope} Selected modelConfigId={request.ModelConfigId.Value} was not found.";
+        }
+
+        if (selected.Status != LlmModelStatus.Active)
+        {
+            return $"No active LLM model configuration matched the request scope. {scope} Selected model '{selected.Name}' is {selected.Status}.";
+        }
+
+        return $"No active LLM model configuration matched the request scope. {scope} Selected model '{selected.Name}' is active but was excluded by route filters.";
+    }
+
+    static string BuildScopeDescription(LlmCompletionRequest request)
+    {
+        var applicationId = string.IsNullOrWhiteSpace(request.ApplicationId) ? "<null>" : request.ApplicationId.Trim();
+        return $"tenantId='{request.TenantId.Trim()}', workspaceId='{request.WorkspaceId.Trim()}', applicationId='{applicationId}'.";
+    }
+
+    static string FormatFailureMessage(LlmModelConfigRecord candidate, Exception exception)
+    {
+        var detail = exception.Message.ReplaceLineEndings(" ").Trim();
+        if (detail.Length > 180)
+        {
+            detail = detail[..180] + "...";
+        }
+
+        return $"{candidate.Name} [{candidate.Provider}/{candidate.Model}] -> {exception.GetType().Name}: {detail}";
+    }
+
+    static string FormatCircuitOpenMessage(LlmModelConfigRecord candidate)
+    {
+        return $"{candidate.Name} [{candidate.Provider}/{candidate.Model}] -> circuit open";
     }
 
     static string ToJson<T>(T value)
