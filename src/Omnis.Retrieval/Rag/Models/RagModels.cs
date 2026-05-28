@@ -87,6 +87,22 @@ public sealed class RagAnswerResponse
 }
 
 /// <summary>
+/// RAG 流式问答片段。Delta 用于前端实时展示，Completed 携带完整 RAG 结果。
+/// </summary>
+public sealed record RagAnswerStreamChunk(
+    string ContentDelta,
+    bool IsCompleted,
+    RagAnswerResponse? Completed = null);
+
+/// <summary>
+/// 答案生成器的流式草稿片段。
+/// </summary>
+public sealed record RagAnswerDraftStreamChunk(
+    string ContentDelta,
+    bool IsCompleted,
+    RagAnswerDraft? Completed = null);
+
+/// <summary>
 /// 结构化引用信息。
 /// </summary>
 public sealed record RagCitation(

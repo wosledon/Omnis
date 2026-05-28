@@ -94,15 +94,13 @@ public static class ConversationEndpoints
         {
             try
             {
-                var result = await conversations.SendMessageAsync(conversationId, request, cancellationToken);
                 if (!request.Stream)
                 {
+                    var result = await conversations.SendMessageAsync(conversationId, request, cancellationToken);
                     return Results.Ok(result);
                 }
 
-                // 当前 RAG 层还没有原生 token stream，这里先提供 SSE 兼容输出，
-                // 让前端和外部调用方可以提前按流式协议接入。
-                await WriteSseAsync(httpContext, result, cancellationToken);
+                await WriteSseAsync(httpContext, conversations.StreamMessageAsync(conversationId, request, cancellationToken), cancellationToken);
                 return Results.Empty;
             }
             catch (KeyNotFoundException ex)
@@ -145,22 +143,27 @@ public static class ConversationEndpoints
     }
 
     /// <summary>
-    /// 以 SSE 协议写出对话结果。现阶段按空格拆分完整答案，后续可替换为 LLM 原生 token stream。
+    /// 以 SSE 协议写出对话流式结果。
     /// </summary>
     static async Task WriteSseAsync(
         HttpContext httpContext,
-        SendConversationMessageResponse response,
+        IAsyncEnumerable<ConversationStreamChunk> chunks,
         CancellationToken cancellationToken)
     {
         httpContext.Response.ContentType = "text/event-stream";
         httpContext.Response.Headers.CacheControl = "no-cache";
 
-        foreach (var token in SplitForStream(response.Answer))
+        await foreach (var chunk in chunks.WithCancellation(cancellationToken))
         {
-            await WriteEventAsync(httpContext, "delta", new { content = token }, cancellationToken);
+            if (chunk.IsCompleted)
+            {
+                await WriteEventAsync(httpContext, "completed", chunk.Completed, cancellationToken);
+            }
+            else
+            {
+                await WriteEventAsync(httpContext, "delta", new { content = chunk.ContentDelta }, cancellationToken);
+            }
         }
-
-        await WriteEventAsync(httpContext, "completed", response, cancellationToken);
     }
 
     /// <summary>
@@ -175,17 +178,6 @@ public static class ConversationEndpoints
         await httpContext.Response.WriteAsync($"event: {eventName}\n", cancellationToken);
         await httpContext.Response.WriteAsync($"data: {JsonSerializer.Serialize(data, JsonOptions)}\n\n", cancellationToken);
         await httpContext.Response.Body.FlushAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// 将完整答案拆成近似 token 的片段，提供打字机式兼容输出。
-    /// </summary>
-    static IEnumerable<string> SplitForStream(string value)
-    {
-        foreach (var part in value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            yield return part + " ";
-        }
     }
 
     /// <summary>

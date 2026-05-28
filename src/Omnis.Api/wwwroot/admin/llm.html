@@ -179,6 +179,11 @@
       color: var(--warn);
     }
 
+    .btn.danger {
+      border-color: #fecaca;
+      color: var(--bad);
+    }
+
     .btn:disabled {
       opacity: .55;
       cursor: not-allowed;
@@ -303,6 +308,32 @@
       word-break: break-word;
     }
 
+    .stream-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .stream-output {
+      min-height: 220px;
+      max-height: 460px;
+    }
+
+    .event-log {
+      min-height: 220px;
+      max-height: 460px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      padding: 10px;
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -369,6 +400,10 @@
         grid-template-columns: 1fr;
       }
 
+      .stream-layout {
+        grid-template-columns: 1fr;
+      }
+
       .field.full {
         grid-column: auto;
       }
@@ -416,6 +451,7 @@
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="config" type="button">配置</button>
             <button class="tab" data-tab="test" type="button">测试</button>
+            <button class="tab" data-tab="stream" type="button">流式</button>
             <button class="tab" data-tab="logs" type="button">日志</button>
           </div>
           <button class="btn warn" id="disableBtn" type="button">停用</button>
@@ -539,6 +575,36 @@
             <div class="result" id="testResult"></div>
           </section>
 
+          <section class="section" id="streamSection">
+            <div class="grid">
+              <div class="field">
+                <label for="streamMaxTokens">Max Tokens</label>
+                <input id="streamMaxTokens" type="number" min="1" value="512">
+              </div>
+              <div class="field">
+                <label for="streamModelConfigId">配置 ID</label>
+                <input id="streamModelConfigId" readonly>
+              </div>
+              <div class="field full">
+                <label for="streamSystemPrompt">系统消息</label>
+                <textarea id="streamSystemPrompt">你是 Omnis 企业客服助手，回答要简洁、准确。</textarea>
+              </div>
+              <div class="field full">
+                <label for="streamUserPrompt">用户消息</label>
+                <textarea id="streamUserPrompt">用三句话介绍流式输出适合哪些客服场景。</textarea>
+              </div>
+            </div>
+            <div class="toolbar">
+              <button class="btn primary" id="streamStartBtn" type="button">开始流式</button>
+              <button class="btn danger" id="streamStopBtn" type="button" disabled>停止</button>
+              <span class="status" id="streamStatus"></span>
+            </div>
+            <div class="stream-layout">
+              <div class="result stream-output" id="streamResult"></div>
+              <div class="event-log" id="streamEvents"></div>
+            </div>
+          </section>
+
           <section class="section" id="logsSection">
             <div class="toolbar">
               <button class="btn" id="loadLogsBtn" type="button">加载日志</button>
@@ -583,7 +649,7 @@
       "Doubao-1.5-pro-32k": "doubao-1-5-pro-32k-250115"
     };
     const statusNames = { 0: "Draft", 1: "Active", 2: "Disabled", 3: "Archived" };
-    const state = { selectedId: null, models: [] };
+    const state = { selectedId: null, models: [], streamAbortController: null };
     const $ = (id) => document.getElementById(id);
 
     document.querySelectorAll(".tab").forEach((tab) => {
@@ -594,6 +660,8 @@
     $("saveBtn").addEventListener("click", saveModel);
     $("disableBtn").addEventListener("click", disableModel);
     $("testBtn").addEventListener("click", testModel);
+    $("streamStartBtn").addEventListener("click", startStream);
+    $("streamStopBtn").addEventListener("click", stopStream);
     $("loadLogsBtn").addEventListener("click", loadLogs);
     $("provider").addEventListener("change", applyProviderDefaults);
 
@@ -629,6 +697,7 @@
       $("circuitBreakSeconds").value = "60";
       $("temperature").value = "0.2";
       $("testModelConfigId").value = "";
+      $("streamModelConfigId").value = "";
       $("formStatus").textContent = "";
       renderModelList();
     }
@@ -699,6 +768,7 @@
       $("circuitBreakSeconds").value = String(model.circuitBreakSeconds);
       $("temperature").value = model.parameters?.temperature || $("temperature").value || "0.2";
       $("testModelConfigId").value = model.id;
+      $("streamModelConfigId").value = model.id;
       $("formStatus").textContent = model.credentialsConfigured ? "凭据已配置" : "凭据未配置";
       $("formStatus").className = `status ${model.credentialsConfigured ? "ok" : ""}`;
       renderModelList();
@@ -772,6 +842,133 @@
       } catch (error) {
         $("testResult").textContent = error.message;
       }
+    }
+
+    async function startStream() {
+      const configId = state.selectedId;
+      if (!configId) {
+        setStatus("streamStatus", "请先保存或选择模型配置", "error");
+        return;
+      }
+
+      stopStream();
+      const controller = new AbortController();
+      state.streamAbortController = controller;
+      $("streamResult").textContent = "";
+      $("streamEvents").textContent = "";
+      setStreamBusy(true);
+      setStatus("streamStatus", "连接中...");
+
+      const body = {
+        tenantId: $("tenantId").value.trim(),
+        workspaceId: $("workspaceId").value.trim(),
+        applicationId: optional($("applicationId").value),
+        modelConfigId: configId,
+        temperature: numberOrNull($("temperature").value),
+        maxTokens: numberOrNull($("streamMaxTokens").value),
+        messages: [
+          { role: 0, content: $("streamSystemPrompt").value },
+          { role: 1, content: $("streamUserPrompt").value }
+        ]
+      };
+
+      try {
+        const response = await fetch("/api/llm/chat/completions/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+
+        if (!response.ok || !response.body) {
+          const text = await response.text();
+          const data = text ? JSON.parse(text) : null;
+          throw new Error(data?.error || response.statusText);
+        }
+
+        setStatus("streamStatus", "接收中...");
+        await readSseStream(response.body, {
+          onDelta: (data) => {
+            $("streamResult").textContent += data.contentDelta || data.content || "";
+            $("streamResult").scrollTop = $("streamResult").scrollHeight;
+          },
+          onCompleted: (data) => {
+            const finishReason = data.finishReason ? `，结束原因 ${data.finishReason}` : "";
+            appendStreamEvent("completed", `调用 ${data.invocationId || "-"}${finishReason}`);
+            setStatus("streamStatus", "已完成", "ok");
+          },
+          onEvent: appendStreamEvent
+        });
+      } catch (error) {
+        if (error.name === "AbortError") {
+          setStatus("streamStatus", "已停止");
+        } else {
+          setStatus("streamStatus", error.message, "error");
+          appendStreamEvent("error", error.message);
+        }
+      } finally {
+        if (state.streamAbortController === controller) {
+          state.streamAbortController = null;
+          setStreamBusy(false);
+        }
+      }
+    }
+
+    function stopStream() {
+      if (state.streamAbortController) {
+        state.streamAbortController.abort();
+        state.streamAbortController = null;
+        setStreamBusy(false);
+      }
+    }
+
+    async function readSseStream(body, handlers) {
+      const reader = body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split(/\r?\n\r?\n/);
+        buffer = parts.pop() || "";
+        parts.forEach((part) => handleSseEvent(part, handlers));
+      }
+
+      if (buffer.trim()) {
+        handleSseEvent(buffer, handlers);
+      }
+    }
+
+    function handleSseEvent(raw, handlers) {
+      const lines = raw.split(/\r?\n/);
+      const eventName = lines.find((line) => line.startsWith("event:"))?.slice(6).trim() || "message";
+      const dataText = lines
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      const data = dataText ? JSON.parse(dataText) : {};
+
+      handlers.onEvent(eventName, dataText);
+      if (eventName === "delta") {
+        handlers.onDelta(data);
+      } else if (eventName === "completed") {
+        handlers.onCompleted(data);
+      }
+    }
+
+    function appendStreamEvent(eventName, detail) {
+      const events = $("streamEvents");
+      const line = `[${new Date().toLocaleTimeString()}] ${eventName} ${typeof detail === "string" ? detail : JSON.stringify(detail)}`;
+      events.textContent += `${line}\n`;
+      events.scrollTop = events.scrollHeight;
+    }
+
+    function setStreamBusy(busy) {
+      $("streamStartBtn").disabled = busy;
+      $("streamStopBtn").disabled = !busy;
     }
 
     async function loadLogs() {

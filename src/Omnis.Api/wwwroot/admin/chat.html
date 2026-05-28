@@ -304,6 +304,11 @@
       justify-self: start;
     }
 
+    .bubble.streaming {
+      border-color: #a7f3d0;
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .1);
+    }
+
     .pill-row {
       display: flex;
       flex-wrap: wrap;
@@ -528,7 +533,8 @@
     const state = {
       knowledgeBases: [],
       selectedKnowledgeBaseIds: new Set(),
-      conversationId: null
+      conversationId: null,
+      streamAbortController: null
     };
     const $ = (id) => document.getElementById(id);
 
@@ -658,30 +664,68 @@
         setBusy("sendMessageBtn", true);
         appendBubble("user", content);
         setStatus("conversationStatus", "生成中...");
-        const result = await requestJson(`/api/conversations/${state.conversationId}/messages`, {
-          method: "POST",
-          body: {
-            content,
-            stream: false,
-            knowledgeBaseIds: selectedKnowledgeBaseIds(),
-            options: {
-              retrievalTopK: 8,
-              contextTopN: numberValue("contextTopN", 5),
-              maxHistoryTurns: 10,
-              minRelevanceScore: numberValue("minScore", 0.1),
-              vectorWeight: 0.45,
-              keywordWeight: 0.55,
-              handoffConfidenceThreshold: 0.6,
-              strictKnowledgeBoundary: $("conversationStrictBoundary").value === "true"
-            }
-          }
-        });
-        appendAssistant(result);
+        await streamMessage(content);
         setStatus("conversationStatus", "已回复", "ok");
       } catch (error) {
         setStatus("conversationStatus", error.message, "error");
       } finally {
         setBusy("sendMessageBtn", false);
+      }
+    }
+
+    async function streamMessage(content) {
+      if (state.streamAbortController) {
+        state.streamAbortController.abort();
+      }
+
+      const controller = new AbortController();
+      state.streamAbortController = controller;
+      const assistantBubble = appendStreamingBubble();
+
+      const response = await fetch(`/api/conversations/${state.conversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          stream: true,
+          knowledgeBaseIds: selectedKnowledgeBaseIds(),
+          options: {
+            retrievalTopK: 8,
+            contextTopN: numberValue("contextTopN", 5),
+            maxHistoryTurns: 10,
+            minRelevanceScore: numberValue("minScore", 0.1),
+            vectorWeight: 0.45,
+            keywordWeight: 0.55,
+            handoffConfidenceThreshold: 0.6,
+            strictKnowledgeBoundary: $("conversationStrictBoundary").value === "true"
+          }
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok || !response.body) {
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
+        throw new Error(data?.error || response.statusText);
+      }
+
+      await readSseStream(response.body, {
+        onDelta: (data) => appendBubbleText(assistantBubble, data.content || ""),
+        onCompleted: (data) => {
+          const finalAnswer = data?.answer || assistantBubble.querySelector("[data-content]").textContent;
+          setBubbleText(assistantBubble, finalAnswer);
+          assistantBubble.classList.remove("streaming");
+          renderBubbleMeta(assistantBubble, {
+            confidenceScore: data?.confidenceScore,
+            citations: data?.citations,
+            handoffSuggested: data?.handoffSuggested,
+            knowledgeBoundaryTriggered: data?.knowledgeBoundaryTriggered
+          });
+        }
+      });
+
+      if (state.streamAbortController === controller) {
+        state.streamAbortController = null;
       }
     }
 
@@ -757,21 +801,82 @@
       appendBubble("assistant", result.answer, meta);
     }
 
+    function appendStreamingBubble() {
+      const bubble = appendBubble("assistant", "", null);
+      bubble.classList.add("streaming");
+      return bubble;
+    }
+
     function appendBubble(role, content, meta = null) {
       const bubble = document.createElement("div");
       bubble.className = `bubble ${role}`;
-      bubble.innerHTML = `<div>${escapeHtml(content)}</div>`;
+      bubble.innerHTML = `<div data-content>${escapeHtml(content)}</div>`;
       if (meta) {
-        const citations = meta.citations || [];
-        const chips = [];
-        if (typeof meta.confidenceScore === "number") chips.push(`<span class="pill good">置信度 ${meta.confidenceScore}</span>`);
-        if (meta.handoffSuggested) chips.push(`<span class="pill warn">建议转人工</span>`);
-        if (meta.knowledgeBoundaryTriggered) chips.push(`<span class="pill bad">知识边界</span>`);
-        citations.forEach((citation) => chips.push(`<span class="pill">${escapeHtml(citation.id || citation.title)}</span>`));
-        if (chips.length > 0) bubble.innerHTML += `<div class="pill-row">${chips.join("")}</div>`;
+        renderBubbleMeta(bubble, meta);
       }
       $("chatBox").appendChild(bubble);
       $("chatBox").scrollTop = $("chatBox").scrollHeight;
+      return bubble;
+    }
+
+    function appendBubbleText(bubble, delta) {
+      const content = bubble.querySelector("[data-content]");
+      content.textContent += delta;
+      $("chatBox").scrollTop = $("chatBox").scrollHeight;
+    }
+
+    function setBubbleText(bubble, text) {
+      bubble.querySelector("[data-content]").textContent = text;
+      $("chatBox").scrollTop = $("chatBox").scrollHeight;
+    }
+
+    function renderBubbleMeta(bubble, meta) {
+      bubble.querySelector(".pill-row")?.remove();
+      const citations = meta.citations || [];
+      const chips = [];
+      if (typeof meta.confidenceScore === "number") chips.push(`<span class="pill good">置信度 ${meta.confidenceScore}</span>`);
+      if (meta.handoffSuggested) chips.push(`<span class="pill warn">建议转人工</span>`);
+      if (meta.knowledgeBoundaryTriggered) chips.push(`<span class="pill bad">知识边界</span>`);
+      citations.forEach((citation) => chips.push(`<span class="pill">${escapeHtml(citation.id || citation.title)}</span>`));
+      if (chips.length > 0) {
+        bubble.insertAdjacentHTML("beforeend", `<div class="pill-row">${chips.join("")}</div>`);
+      }
+    }
+
+    async function readSseStream(body, handlers) {
+      const reader = body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split(/\r?\n\r?\n/);
+        buffer = parts.pop() || "";
+        parts.forEach((part) => handleSseEvent(part, handlers));
+      }
+
+      if (buffer.trim()) {
+        handleSseEvent(buffer, handlers);
+      }
+    }
+
+    function handleSseEvent(raw, handlers) {
+      const lines = raw.split(/\r?\n/);
+      const eventName = lines.find((line) => line.startsWith("event:"))?.slice(6).trim() || "message";
+      const dataText = lines
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      const data = dataText ? JSON.parse(dataText) : {};
+
+      if (eventName === "delta") {
+        handlers.onDelta(data);
+      } else if (eventName === "completed") {
+        handlers.onCompleted(data);
+      }
     }
 
     function formatRagResult(result) {

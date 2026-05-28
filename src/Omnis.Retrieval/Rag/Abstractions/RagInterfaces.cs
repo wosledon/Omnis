@@ -7,6 +7,9 @@ public interface IRagService
 {
     /// <summary>执行一次完整的 RAG 问答流程，返回答案、引用和调试信息。</summary>
     Task<RagAnswerResponse> AnswerAsync(RagAnswerRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>执行一次流式 RAG 问答流程，检索完成后实时返回 LLM 生成增量，最后返回完整结果。</summary>
+    IAsyncEnumerable<RagAnswerStreamChunk> AnswerStreamAsync(RagAnswerRequest request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -60,6 +63,15 @@ public interface IRagAnswerGenerator
 {
     /// <summary>基于 Prompt 和检索上下文生成答案草稿。</summary>
     Task<RagAnswerDraft> GenerateAsync(
+        RagAnswerRequest request,
+        RewrittenQuery rewrittenQuery,
+        string prompt,
+        IReadOnlyList<RetrievalCandidate> context,
+        IReadOnlyList<RagCitation> citations,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>基于 Prompt 和检索上下文流式生成答案草稿。</summary>
+    IAsyncEnumerable<RagAnswerDraftStreamChunk> GenerateStreamAsync(
         RagAnswerRequest request,
         RewrittenQuery rewrittenQuery,
         string prompt,

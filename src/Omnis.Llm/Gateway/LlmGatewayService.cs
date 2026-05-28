@@ -104,14 +104,76 @@ internal sealed class LlmGatewayService(
         LlmCompletionRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // 当前对外提供稳定的 SSE 协议形态；底层 Provider 原生流式可在后续替换到这里。
-        var response = await CompleteAsync(request, cancellationToken);
-        foreach (var token in SplitForCompatStream(response.Content))
+        ValidateCompletionRequest(request);
+        var candidates = await ResolveRouteAsync(request, cancellationToken);
+        Exception? lastError = null;
+        var failureSummaries = new List<string>();
+
+        if (candidates.Count == 0)
         {
-            yield return new LlmStreamChunk(response.InvocationId, response.ModelConfigId, token, false);
+            throw new InvalidOperationException(await BuildNoCandidateMessageAsync(request, cancellationToken));
         }
 
-        yield return new LlmStreamChunk(response.InvocationId, response.ModelConfigId, string.Empty, true, response.FinishReason);
+        for (var index = 0; index < candidates.Count; index++)
+        {
+            var candidate = candidates[index];
+            if (await IsCircuitOpenAsync(candidate, cancellationToken))
+            {
+                failureSummaries.Add(FormatCircuitOpenMessage(candidate));
+                continue;
+            }
+
+            var usedFallback = index > 0 || (request.ModelConfigId.HasValue && candidate.Id != request.ModelConfigId.Value);
+            var invocationId = Guid.NewGuid();
+            var emitted = new List<string>();
+            string? finishReason = null;
+            Exception? streamError = null;
+
+            await using var stream = StreamCandidateAsync(candidate, request, usedFallback, invocationId, emitted, cancellationToken)
+                .GetAsyncEnumerator(cancellationToken);
+            while (true)
+            {
+                LlmStreamChunk? delta = null;
+                var hasNext = false;
+                try
+                {
+                    hasNext = await stream.MoveNextAsync();
+                    if (hasNext)
+                    {
+                        delta = stream.Current;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    streamError = ex;
+                    break;
+                }
+
+                if (!hasNext)
+                {
+                    yield return new LlmStreamChunk(invocationId, candidate.Id, string.Empty, true, finishReason);
+                    yield break;
+                }
+
+                yield return delta!;
+            }
+
+            lastError = streamError;
+            failureSummaries.Add(FormatFailureMessage(candidate, streamError));
+            await store.RecordCircuitFailureAsync(
+                candidate.Id,
+                candidate.FailureThreshold,
+                candidate.CircuitBreakSeconds,
+                cancellationToken);
+
+            await SaveFailureLogAsync(candidate, request, usedFallback, streamError, cancellationToken);
+        }
+
+        var message = failureSummaries.Count == 0
+            ? "No available LLM model configuration could complete the request."
+            : $"No available LLM model configuration could complete the request. Failures: {string.Join(" | ", failureSummaries)}";
+
+        throw new InvalidOperationException(message, lastError);
     }
 
     public Task<IReadOnlyCollection<LlmInvocationLogDto>> ListInvocationLogsAsync(
@@ -183,6 +245,59 @@ internal sealed class LlmGatewayService(
             usedFallback,
             null,
             log.CreatedAt);
+    }
+
+    async IAsyncEnumerable<LlmStreamChunk> StreamCandidateAsync(
+        LlmModelConfigRecord candidate,
+        LlmCompletionRequest request,
+        bool usedFallback,
+        Guid invocationId,
+        List<string> emitted,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var providerRequest = new LlmProviderRequest(
+            candidate,
+            request.Messages,
+            request.Temperature,
+            request.MaxTokens,
+            MergeParameters(candidate.Parameters, request.Parameters));
+
+        await foreach (var token in providerClient.StreamAsync(providerRequest, cancellationToken))
+        {
+            emitted.Add(token);
+            yield return new LlmStreamChunk(invocationId, candidate.Id, token, false);
+        }
+
+        stopwatch.Stop();
+        await store.RecordCircuitSuccessAsync(candidate.Id, cancellationToken);
+
+        var content = string.Concat(emitted);
+        var promptTokens = EstimateTokens(string.Join(' ', request.Messages.Select(message => message.Content)));
+        var completionTokens = EstimateTokens(content);
+        var status = usedFallback ? LlmInvocationStatus.FallbackSucceeded : LlmInvocationStatus.Succeeded;
+
+        await store.SaveInvocationLogAsync(
+            new LlmInvocationLogRecord(
+                invocationId,
+                request.TenantId.Trim(),
+                request.WorkspaceId.Trim(),
+                NormalizeOptional(request.ApplicationId),
+                candidate.Id,
+                candidate.Name,
+                candidate.Provider,
+                candidate.Model,
+                ToJson(new { request.Messages, request.Temperature, request.MaxTokens, request.Metadata, stream = true }),
+                ToJson(new { content }),
+                status,
+                usedFallback,
+                promptTokens,
+                completionTokens,
+                promptTokens + completionTokens,
+                stopwatch.ElapsedMilliseconds,
+                null,
+                DateTimeOffset.UtcNow),
+            cancellationToken);
     }
 
     async Task SaveFailureLogAsync(
@@ -319,6 +434,13 @@ internal sealed class LlmGatewayService(
         {
             yield return token + " ";
         }
+    }
+
+    static int EstimateTokens(string value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? 0
+            : Math.Max(1, (int)Math.Ceiling(value.Length / 4.0));
     }
 
     static string? NormalizeOptional(string? value)

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Runtime.CompilerServices;
 using Omnis.Contracts.Llm;
 using Omnis.Llm;
 using Omnis.Retrieval.Rag;
@@ -73,6 +74,84 @@ internal sealed class LlmRagAnswerGenerator(ILlmGateway llmGateway) : IRagAnswer
         };
     }
 
+    public async IAsyncEnumerable<RagAnswerDraftStreamChunk> GenerateStreamAsync(
+        RagAnswerRequest request,
+        RewrittenQuery rewrittenQuery,
+        string prompt,
+        IReadOnlyList<RetrievalCandidate> context,
+        IReadOnlyList<RagCitation> citations,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (context.Count == 0)
+        {
+            const string empty = "抱歉，我没有在知识库中找到相关内容。建议转人工处理。";
+            foreach (var token in SplitForCompatStream(empty))
+            {
+                yield return new RagAnswerDraftStreamChunk(token, false);
+            }
+
+            yield return new RagAnswerDraftStreamChunk(string.Empty, true, new RagAnswerDraft
+            {
+                Answer = empty,
+                RawOutput = empty,
+                CompletenessScore = 0,
+                SelfScore = 0,
+                CitationIds = []
+            });
+            yield break;
+        }
+
+        var builder = new StringBuilder();
+        await foreach (var chunk in llmGateway.StreamAsync(new LlmCompletionRequest(
+            request.TenantId,
+            request.WorkspaceId,
+            request.ApplicationId,
+            [
+                new LlmChatMessage(LlmMessageRole.System, BuildSystemPrompt(request)),
+                new LlmChatMessage(LlmMessageRole.User, BuildUserPrompt(rewrittenQuery, context, citations, prompt))
+            ],
+            Temperature: 0.2,
+            MaxTokens: 900,
+            Metadata: new Dictionary<string, string>
+            {
+                ["source"] = "rag",
+                ["conversationId"] = request.ConversationId ?? string.Empty,
+                ["messageId"] = request.MessageId ?? string.Empty,
+                ["knowledgeBaseIds"] = string.Join(",", request.KnowledgeBaseIds),
+                ["stream"] = "true"
+            }), cancellationToken))
+        {
+            if (chunk.IsCompleted)
+            {
+                continue;
+            }
+
+            builder.Append(chunk.ContentDelta);
+            yield return new RagAnswerDraftStreamChunk(chunk.ContentDelta, false);
+        }
+
+        var raw = builder.ToString();
+        var answer = NormalizeAnswer(raw);
+        var citationIds = ExtractCitationIds(answer, citations);
+        if (citationIds.Length == 0 && citations.Count > 0)
+        {
+            citationIds = [citations[0].Id];
+            answer = $"{answer} [{citations[0].Id}]";
+        }
+
+        var retrievalScore = context.Take(Math.Min(3, context.Count))
+            .Average(candidate => candidate.RerankScore ?? candidate.FusedScore);
+
+        yield return new RagAnswerDraftStreamChunk(string.Empty, true, new RagAnswerDraft
+        {
+            Answer = answer,
+            RawOutput = raw,
+            CompletenessScore = answer.Length > 30 ? 0.9 : 0.65,
+            SelfScore = Math.Max(0.1, Math.Min(1, retrievalScore)),
+            CitationIds = citationIds
+        });
+    }
+
     static string BuildSystemPrompt(RagAnswerRequest request)
     {
         var boundary = request.Options.StrictKnowledgeBoundary
@@ -138,5 +217,13 @@ internal sealed class LlmRagAnswerGenerator(ILlmGateway llmGateway) : IRagAnswer
             .Where(valid.Contains)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    static IEnumerable<string> SplitForCompatStream(string value)
+    {
+        foreach (var token in value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            yield return token + " ";
+        }
     }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 
 namespace Omnis.Retrieval.Rag;
@@ -22,6 +23,70 @@ internal sealed class RagService(
     {
         Validate(request);
 
+        var pipeline = await PrepareAsync(request, cancellationToken);
+        var generationWatch = Stopwatch.StartNew();
+        var draft = pipeline.BoundaryTriggered
+            ? CreateBoundaryDraft(pipeline.RewrittenQuery.Query)
+            : await answerGenerator.GenerateAsync(request, pipeline.RewrittenQuery, pipeline.Prompt, pipeline.Context, pipeline.Citations, cancellationToken);
+        generationWatch.Stop();
+        pipeline.Total.Stop();
+
+        var response = CreateResponse(request, pipeline, draft, generationWatch.ElapsedMilliseconds, pipeline.Total.ElapsedMilliseconds);
+        await SaveObservationAsync(request, response, HasHallucination(draft, pipeline.Citations), cancellationToken);
+        return response;
+    }
+
+    public async IAsyncEnumerable<RagAnswerStreamChunk> AnswerStreamAsync(
+        RagAnswerRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Validate(request);
+
+        var pipeline = await PrepareAsync(request, cancellationToken);
+        var generationWatch = Stopwatch.StartNew();
+        RagAnswerDraft? draft;
+
+        if (pipeline.BoundaryTriggered)
+        {
+            draft = CreateBoundaryDraft(pipeline.RewrittenQuery.Query);
+            foreach (var token in SplitForCompatStream(draft.Answer))
+            {
+                yield return new RagAnswerStreamChunk(token, false);
+            }
+        }
+        else
+        {
+            draft = null;
+            await foreach (var chunk in answerGenerator.GenerateStreamAsync(
+                request,
+                pipeline.RewrittenQuery,
+                pipeline.Prompt,
+                pipeline.Context,
+                pipeline.Citations,
+                cancellationToken))
+            {
+                if (chunk.IsCompleted)
+                {
+                    draft = chunk.Completed;
+                    continue;
+                }
+
+                yield return new RagAnswerStreamChunk(chunk.ContentDelta, false);
+            }
+
+            draft ??= CreateBoundaryDraft(pipeline.RewrittenQuery.Query);
+        }
+
+        generationWatch.Stop();
+        pipeline.Total.Stop();
+
+        var response = CreateResponse(request, pipeline, draft, generationWatch.ElapsedMilliseconds, pipeline.Total.ElapsedMilliseconds);
+        await SaveObservationAsync(request, response, HasHallucination(draft, pipeline.Citations), cancellationToken);
+        yield return new RagAnswerStreamChunk(string.Empty, true, response);
+    }
+
+    async Task<RagPipelineState> PrepareAsync(RagAnswerRequest request, CancellationToken cancellationToken)
+    {
         var total = Stopwatch.StartNew();
         var rewrittenQuery = await queryRewriter.RewriteAsync(request, cancellationToken);
 
@@ -52,44 +117,58 @@ internal sealed class RagService(
         var boundaryTriggered = request.Options.StrictKnowledgeBoundary && topScore < request.Options.MinRelevanceScore;
         var prompt = promptBuilder.BuildPrompt(request, rewrittenQuery, context, citations);
 
-        var generationWatch = Stopwatch.StartNew();
-        var draft = boundaryTriggered
-            ? CreateBoundaryDraft(rewrittenQuery.Query)
-            : await answerGenerator.GenerateAsync(request, rewrittenQuery, prompt, context, citations, cancellationToken);
-        generationWatch.Stop();
-        total.Stop();
-
-        var validCitationIds = citations.Select(citation => citation.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var usedCitationIds = draft.CitationIds.Where(validCitationIds.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var hasHallucination = draft.CitationIds.Any(id => !validCitationIds.Contains(id));
-        var usedCitations = citations.Where(citation => usedCitationIds.Contains(citation.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
         var retrieved = context.Select(ToRetrievedChunk).ToArray();
-        var confidence = boundaryTriggered
-            ? 0
-            : CalculateConfidence(context, draft);
 
-        var response = new RagAnswerResponse
+        return new RagPipelineState(
+            total,
+            rewrittenQuery,
+            context,
+            citations,
+            retrieved,
+            boundaryTriggered,
+            prompt,
+            retrievalWatch.ElapsedMilliseconds);
+    }
+
+    static RagAnswerResponse CreateResponse(
+        RagAnswerRequest request,
+        RagPipelineState pipeline,
+        RagAnswerDraft draft,
+        long generationDurationMs,
+        long totalDurationMs)
+    {
+        var validCitationIds = pipeline.Citations.Select(citation => citation.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var usedCitationIds = draft.CitationIds.Where(validCitationIds.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var usedCitations = pipeline.Citations.Where(citation => usedCitationIds.Contains(citation.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
+        var confidence = pipeline.BoundaryTriggered
+            ? 0
+            : CalculateConfidence(pipeline.Context, draft);
+
+        return new RagAnswerResponse
         {
             Answer = draft.Answer,
-            OriginalQuestion = rewrittenQuery.OriginalQuestion,
-            RewrittenQuery = rewrittenQuery.Query,
+            OriginalQuestion = pipeline.RewrittenQuery.OriginalQuestion,
+            RewrittenQuery = pipeline.RewrittenQuery.Query,
             ConfidenceScore = confidence,
             HandoffSuggested = confidence < request.Options.HandoffConfidenceThreshold,
-            KnowledgeBoundaryTriggered = boundaryTriggered,
+            KnowledgeBoundaryTriggered = pipeline.BoundaryTriggered,
             Citations = usedCitations,
-            RetrievedChunks = retrieved,
+            RetrievedChunks = pipeline.Retrieved,
             Debug = new RagDebugTrace
             {
-                Prompt = prompt,
+                Prompt = pipeline.Prompt,
                 LlmRawOutput = draft.RawOutput,
-                RetrievalDurationMs = retrievalWatch.ElapsedMilliseconds,
-                GenerationDurationMs = generationWatch.ElapsedMilliseconds,
-                TotalDurationMs = total.ElapsedMilliseconds
+                RetrievalDurationMs = pipeline.RetrievalDurationMs,
+                GenerationDurationMs = generationDurationMs,
+                TotalDurationMs = totalDurationMs
             }
         };
+    }
 
-        await SaveObservationAsync(request, response, hasHallucination, cancellationToken);
-        return response;
+    static bool HasHallucination(RagAnswerDraft draft, IReadOnlyList<RagCitation> citations)
+    {
+        var validCitationIds = citations.Select(citation => citation.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return draft.CitationIds.Any(id => !validCitationIds.Contains(id));
     }
 
     async Task SaveObservationAsync(
@@ -211,4 +290,22 @@ internal sealed class RagService(
         var normalized = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return normalized.Length <= maxLength ? normalized : normalized[..maxLength] + "...";
     }
+
+    static IEnumerable<string> SplitForCompatStream(string value)
+    {
+        foreach (var token in value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            yield return token + " ";
+        }
+    }
+
+    sealed record RagPipelineState(
+        Stopwatch Total,
+        RewrittenQuery RewrittenQuery,
+        IReadOnlyList<RetrievalCandidate> Context,
+        IReadOnlyList<RagCitation> Citations,
+        IReadOnlyList<RagRetrievedChunk> Retrieved,
+        bool BoundaryTriggered,
+        string Prompt,
+        long RetrievalDurationMs);
 }

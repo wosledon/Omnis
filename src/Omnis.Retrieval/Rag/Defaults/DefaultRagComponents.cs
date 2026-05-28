@@ -161,6 +161,24 @@ internal sealed class ExtractiveRagAnswerGenerator : IRagAnswerGenerator
         });
     }
 
+    public async IAsyncEnumerable<RagAnswerDraftStreamChunk> GenerateStreamAsync(
+        RagAnswerRequest request,
+        RewrittenQuery rewrittenQuery,
+        string prompt,
+        IReadOnlyList<RetrievalCandidate> context,
+        IReadOnlyList<RagCitation> citations,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var draft = await GenerateAsync(request, rewrittenQuery, prompt, context, citations, cancellationToken);
+        foreach (var token in draft.Answer.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return new RagAnswerDraftStreamChunk(token + " ", false);
+        }
+
+        yield return new RagAnswerDraftStreamChunk(string.Empty, true, draft);
+    }
+
     static string BestSentence(string query, string content)
     {
         var queryTerms = TextScoring.Tokenize(query).ToArray();

@@ -40,6 +40,12 @@ public interface IConversationService
         SendConversationMessageRequest request,
         CancellationToken cancellationToken = default);
 
+    /// <summary>写入用户消息，并在 RAG/LLM 生成过程中实时返回 AI 文本增量，完成后保存 AI 回复。</summary>
+    IAsyncEnumerable<ConversationStreamChunk> StreamMessageAsync(
+        Guid conversationId,
+        SendConversationMessageRequest request,
+        CancellationToken cancellationToken = default);
+
     /// <summary>为某条消息追加用户反馈，并关联到该消息的 RAG 观测日志。</summary>
     Task<MessageFeedbackDto?> AddFeedbackAsync(
         Guid messageId,

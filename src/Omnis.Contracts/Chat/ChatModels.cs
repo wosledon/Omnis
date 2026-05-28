@@ -162,6 +162,14 @@ public sealed record SendConversationMessageResponse(
     bool KnowledgeBoundaryTriggered);
 
 /// <summary>
+/// 会话流式响应片段。Delta 用于实时追加文本，Completed 携带最终落库后的完整回复元数据。
+/// </summary>
+public sealed record ConversationStreamChunk(
+    string ContentDelta,
+    bool IsCompleted,
+    SendConversationMessageResponse? Completed = null);
+
+/// <summary>
 /// 用户反馈提交请求。
 /// </summary>
 public sealed record MessageFeedbackRequest(

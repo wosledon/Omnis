@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Omnis.Contracts.Chat;
 using Omnis.EfCore.Npgsql.Chat.Entities;
@@ -217,6 +218,100 @@ internal sealed class PostgresConversationService(
             citations,
             ragResponse.HandoffSuggested,
             ragResponse.KnowledgeBoundaryTriggered);
+    }
+
+    public async IAsyncEnumerable<ConversationStreamChunk> StreamMessageAsync(
+        Guid conversationId,
+        SendConversationMessageRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Content);
+
+        var conversation = await dbContext.Conversations
+            .FirstOrDefaultAsync(entity => entity.Id == conversationId, cancellationToken)
+            ?? throw new KeyNotFoundException("Conversation was not found.");
+
+        if (conversation.Status != ConversationStatus.Active)
+        {
+            throw new InvalidOperationException("Conversation is not active.");
+        }
+
+        var now = DateTime.UtcNow;
+        var userMessage = new ConversationMessageEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = conversation.TenantId,
+            ConversationId = conversation.Id,
+            Role = MessageRole.User,
+            Content = request.Content.Trim(),
+            CitationsJson = "[]",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        var assistantMessageId = Guid.NewGuid();
+        dbContext.ConversationMessages.Add(userMessage);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var history = await LoadRagHistoryAsync(conversation.Id, userMessage.Id, request.Options, cancellationToken);
+        RagAnswerResponse? completed = null;
+
+        await foreach (var chunk in ragService.AnswerStreamAsync(CreateRagRequest(conversation, userMessage, assistantMessageId, request, history), cancellationToken))
+        {
+            if (chunk.IsCompleted)
+            {
+                completed = chunk.Completed;
+                continue;
+            }
+
+            yield return new ConversationStreamChunk(chunk.ContentDelta, false);
+        }
+
+        completed ??= new RagAnswerResponse
+        {
+            Answer = string.Empty,
+            OriginalQuestion = userMessage.Content,
+            RewrittenQuery = userMessage.Content,
+            ConfidenceScore = 0,
+            HandoffSuggested = true,
+            KnowledgeBoundaryTriggered = true
+        };
+
+        var citations = completed.Citations.Select(citation => new ChatCitationDto(
+            citation.Id,
+            citation.DocumentId,
+            citation.ChunkId,
+            citation.Title,
+            citation.Preview,
+            citation.Url)).ToArray();
+
+        var ragLogId = await FindRagLogIdAsync(conversation.TenantId, assistantMessageId, cancellationToken);
+        var assistantMessage = new ConversationMessageEntity
+        {
+            Id = assistantMessageId,
+            TenantId = conversation.TenantId,
+            ConversationId = conversation.Id,
+            Role = MessageRole.Assistant,
+            Content = completed.Answer,
+            CitationsJson = ToJson(citations),
+            ConfidenceScore = completed.ConfidenceScore,
+            RagInferenceLogId = ragLogId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        conversation.UpdatedAt = DateTime.UtcNow;
+        dbContext.ConversationMessages.Add(assistantMessage);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        yield return new ConversationStreamChunk(string.Empty, true, new SendConversationMessageResponse(
+            userMessage.Id,
+            assistantMessage.Id,
+            completed.Answer,
+            completed.ConfidenceScore,
+            citations,
+            completed.HandoffSuggested,
+            completed.KnowledgeBoundaryTriggered));
     }
 
     /// <summary>
