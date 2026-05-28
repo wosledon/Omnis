@@ -669,6 +669,8 @@
               contextTopN: numberValue("contextTopN", 5),
               maxHistoryTurns: 10,
               minRelevanceScore: numberValue("minScore", 0.1),
+              vectorWeight: 0.45,
+              keywordWeight: 0.55,
               handoffConfidenceThreshold: 0.6,
               strictKnowledgeBoundary: $("conversationStrictBoundary").value === "true"
             }
@@ -729,6 +731,8 @@
               contextTopN: numberValue("ragContextTopN", 5),
               maxHistoryTurns: 10,
               minRelevanceScore: numberValue("ragMinScore", 0.1),
+              vectorWeight: 0.45,
+              keywordWeight: 0.55,
               handoffConfidenceThreshold: 0.6,
               strictKnowledgeBoundary: $("strictBoundary").value === "true"
             }

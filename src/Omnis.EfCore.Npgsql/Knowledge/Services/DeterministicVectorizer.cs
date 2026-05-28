@@ -19,10 +19,7 @@ internal sealed class DeterministicVectorizer(OmnisNpgsqlOptions options) : IKno
         var dimensions = Math.Max(8, options.EmbeddingDimensions);
         var vector = new double[dimensions];
         // 简单分词后把 token 哈希到固定桶位，为后续真实 embedding 留出接口。
-        var tokens = content.Split([' ', '\n', '\t', '\r', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}'],
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        foreach (var token in tokens)
+        foreach (var token in Tokenize(content))
         {
             // 使用符号哈希减少所有 token 都正向累加造成的偏置。
             var hash = SHA256.HashData(Encoding.UTF8.GetBytes(token.ToLowerInvariant()));
@@ -44,5 +41,25 @@ internal sealed class DeterministicVectorizer(OmnisNpgsqlOptions options) : IKno
         }
 
         return vector;
+    }
+
+    static IEnumerable<string> Tokenize(string value)
+    {
+        var normalized = value.ToLowerInvariant();
+        var tokens = normalized
+            .Split([' ', '\n', '\t', '\r', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '"', '\'', '/', '\\', '|', '-', '_', '+', '=', '*', '&', '^', '%', '$', '#', '@', '，', '。', '；', '：', '！', '？', '（', '）', '【', '】', '、'],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => token.Length > 1);
+
+        foreach (var token in tokens)
+        {
+            yield return token;
+        }
+
+        var cjk = normalized.Where(ch => ch is >= '\u4e00' and <= '\u9fff').ToArray();
+        for (var index = 0; index < cjk.Length - 1; index++)
+        {
+            yield return new string([cjk[index], cjk[index + 1]]);
+        }
     }
 }

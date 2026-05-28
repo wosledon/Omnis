@@ -97,6 +97,10 @@ public sealed record ChatRagOptions(
     int MaxHistoryTurns = 10,
     /// <summary>知识边界兜底阈值，低于该分数时不编造答案。</summary>
     double MinRelevanceScore = 0.5,
+    /// <summary>向量检索权重。</summary>
+    double VectorWeight = 0.45,
+    /// <summary>关键词检索权重。</summary>
+    double KeywordWeight = 0.55,
     /// <summary>建议转人工的置信度阈值。</summary>
     double HandoffConfidenceThreshold = 0.6,
     /// <summary>是否严格限制答案只能来自知识库。</summary>

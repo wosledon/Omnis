@@ -362,6 +362,8 @@ internal sealed class PostgresConversationService(
                 ContextTopN = options.ContextTopN,
                 MaxHistoryTurns = options.MaxHistoryTurns,
                 MinRelevanceScore = options.MinRelevanceScore,
+                VectorWeight = options.VectorWeight,
+                KeywordWeight = options.KeywordWeight,
                 HandoffConfidenceThreshold = options.HandoffConfidenceThreshold,
                 StrictKnowledgeBoundary = options.StrictKnowledgeBoundary
             }

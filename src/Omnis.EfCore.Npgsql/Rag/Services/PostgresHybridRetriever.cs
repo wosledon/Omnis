@@ -53,6 +53,7 @@ internal sealed class PostgresHybridRetriever(
                 && (knowledgeBaseIds.Length == 0 || knowledgeBaseIds.Contains(chunk.KnowledgeBaseId))
                 && (
                     document.Visibility == DocumentVisibility.Public
+                    || document.Visibility == DocumentVisibility.Internal
                     || dbContext.DocumentAclEntries.AsNoTracking().Any(acl =>
                         acl.DocumentId == document.Id
                         && ReadPermissions.Contains(acl.Permission)
@@ -162,8 +163,11 @@ internal sealed class PostgresHybridRetriever(
             return 0;
         }
 
+        var normalizedContent = content.ToLowerInvariant();
         var contentTermSet = contentTerms.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var matched = queryTerms.Count(term => contentTermSet.Contains(term));
+        var matched = queryTerms.Count(term =>
+            contentTermSet.Contains(term) ||
+            (term.Length >= 2 && normalizedContent.Contains(term, StringComparison.OrdinalIgnoreCase)));
         var coverage = (double)matched / queryTerms.Count;
         var density = (double)matched / Math.Sqrt(contentTerms.Length);
 
