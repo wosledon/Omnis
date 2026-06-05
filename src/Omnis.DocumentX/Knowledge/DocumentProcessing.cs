@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.IO.Compression;
+using UglyToad.PdfPig;
 
 namespace Omnis.DocumentX.Knowledge;
 
@@ -36,6 +38,10 @@ public interface IEmbeddingGenerator
 /// </summary>
 internal sealed class DocumentTextExtractor : IDocumentTextExtractor
 {
+    static readonly Encoding Utf8Strict = new UTF8Encoding(false, true);
+
+    static readonly Encoding[] LegacyChineseEncodings = CreateLegacyChineseEncodings();
+
     // MVP 阶段仅开放 PRD 要求的三类文件；Office/OCR 后续接入。
     static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -72,10 +78,71 @@ internal sealed class DocumentTextExtractor : IDocumentTextExtractor
     {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
         {
-            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+            return Utf8Strict.GetString(bytes, 3, bytes.Length - 3);
         }
 
-        return Encoding.UTF8.GetString(bytes);
+        if (bytes.Length >= 2)
+        {
+            if (bytes[0] == 0xFF && bytes[1] == 0xFE)
+            {
+                return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
+            }
+
+            if (bytes[0] == 0xFE && bytes[1] == 0xFF)
+            {
+                return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
+            }
+        }
+
+        try
+        {
+            return Utf8Strict.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return DecodeLegacyChineseText(bytes);
+        }
+    }
+
+    static string DecodePdfLiteralText(string value)
+    {
+        var unescaped = UnescapePdfText(value);
+        var bytes = Encoding.Latin1.GetBytes(unescaped);
+        return DecodeText(bytes);
+    }
+
+    static string DecodeLegacyChineseText(byte[] bytes)
+    {
+        return LegacyChineseEncodings
+            .Select(encoding => encoding.GetString(bytes))
+            .OrderBy(ScoreDecodedText)
+            .First();
+    }
+
+    static Encoding[] CreateLegacyChineseEncodings()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return
+        [
+            Encoding.GetEncoding(54936), // GB18030
+            Encoding.GetEncoding(936) // GBK/GB2312
+        ];
+    }
+
+    static int ScoreDecodedText(string value)
+    {
+        var score = 0;
+        foreach (var current in value)
+        {
+            score += current switch
+            {
+                '\uFFFD' => 50,
+                >= '\u0080' and <= '\u009F' => 10,
+                _ => 0
+            };
+        }
+
+        return score;
     }
 
     /// <summary>
@@ -83,15 +150,65 @@ internal sealed class DocumentTextExtractor : IDocumentTextExtractor
     /// </summary>
     static string ExtractPdfText(byte[] bytes)
     {
+        var parsedText = ExtractPdfTextWithPdfPig(bytes);
+        if (LooksLikeExtractedText(parsedText))
+        {
+            return parsedText;
+        }
+
         var raw = Encoding.Latin1.GetString(bytes);
-        var matches = Regex.Matches(raw, @"\((?<text>(?:\\.|[^\\)])*)\)\s*Tj|\[(?<array>[^\]]+)\]\s*TJ");
         var parts = new List<string>();
+        AddPdfTextParts(raw, parts);
+
+        foreach (var streamText in ExtractFlateDecodedPdfStreams(raw))
+        {
+            AddPdfTextParts(streamText, parts);
+        }
+
+        var text = string.Join(' ', parts.Where(LooksLikeExtractedText));
+        if (LooksLikeExtractedText(text))
+        {
+            return text;
+        }
+
+        throw new InvalidOperationException("The PDF did not contain extractable text. Please upload a text-based PDF or convert it to TXT/Markdown first.");
+    }
+
+    static string ExtractPdfTextWithPdfPig(byte[] bytes)
+    {
+        try
+        {
+            using var stream = new MemoryStream(bytes);
+            using var document = PdfDocument.Open(stream);
+            var builder = new StringBuilder();
+
+            foreach (var page in document.GetPages())
+            {
+                if (builder.Length > 0)
+                {
+                    builder.AppendLine().AppendLine();
+                }
+
+                builder.Append(page.Text);
+            }
+
+            return builder.ToString();
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    static void AddPdfTextParts(string content, List<string> parts)
+    {
+        var matches = Regex.Matches(content, @"\((?<text>(?:\\.|[^\\)])*)\)\s*Tj|\[(?<array>[^\]]+)\]\s*TJ");
 
         foreach (Match match in matches)
         {
             if (match.Groups["text"].Success)
             {
-                parts.Add(UnescapePdfText(match.Groups["text"].Value));
+                parts.Add(DecodePdfLiteralText(match.Groups["text"].Value));
                 continue;
             }
 
@@ -99,15 +216,72 @@ internal sealed class DocumentTextExtractor : IDocumentTextExtractor
             {
                 foreach (Match item in Regex.Matches(match.Groups["array"].Value, @"\((?<text>(?:\\.|[^\\)])*)\)"))
                 {
-                    parts.Add(UnescapePdfText(item.Groups["text"].Value));
+                    parts.Add(DecodePdfLiteralText(item.Groups["text"].Value));
                 }
             }
         }
+    }
 
-        return parts.Count > 0
-            ? string.Join(' ', parts)
-            // 如果不是常见文本型 PDF，退回字节文本解码，避免直接失败。
-            : DecodeText(bytes);
+    static IEnumerable<string> ExtractFlateDecodedPdfStreams(string raw)
+    {
+        var matches = Regex.Matches(raw, @"(?<dict><<[\s\S]*?>>)\s*stream\r?\n(?<stream>[\s\S]*?)\r?\nendstream");
+        foreach (Match match in matches)
+        {
+            if (!match.Groups["dict"].Value.Contains("/FlateDecode", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var compressedBytes = Encoding.Latin1.GetBytes(match.Groups["stream"].Value);
+            using var input = new MemoryStream(compressedBytes);
+            using var deflate = new ZLibStream(input, CompressionMode.Decompress);
+            using var output = new MemoryStream();
+
+            try
+            {
+                deflate.CopyTo(output);
+            }
+            catch (InvalidDataException)
+            {
+                continue;
+            }
+
+            yield return Encoding.Latin1.GetString(output.ToArray());
+        }
+    }
+
+    static bool LooksLikeExtractedText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var lettersOrDigits = 0;
+        var suspicious = 0;
+        foreach (var current in value)
+        {
+            if (char.IsLetterOrDigit(current) || IsCjk(current))
+            {
+                lettersOrDigits++;
+            }
+            else if (char.IsControl(current) && !char.IsWhiteSpace(current))
+            {
+                suspicious++;
+            }
+            else if (current == '\uFFFD')
+            {
+                suspicious += 5;
+            }
+        }
+
+        return lettersOrDigits >= 4 && suspicious * 4 < value.Length;
+    }
+
+    static bool IsCjk(char value)
+    {
+        return value is >= '\u3400' and <= '\u9FFF'
+            or >= '\uF900' and <= '\uFAFF';
     }
 
     /// <summary>
@@ -129,12 +303,68 @@ internal sealed class DocumentTextExtractor : IDocumentTextExtractor
     /// </summary>
     static string Normalize(string text)
     {
-        text = text.Replace("\r\n", "\n", StringComparison.Ordinal)
+        text = RemovePostgresInvalidText(text)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n');
         text = Regex.Replace(text, @"[ \t]+", " ");
         text = Regex.Replace(text, @"\n{3,}", "\n\n");
 
         return text.Trim();
+    }
+
+    /// <summary>
+    /// PostgreSQL text/json fields cannot store NUL bytes or invalid Unicode surrogate pairs.
+    /// </summary>
+    static string RemovePostgresInvalidText(string value)
+    {
+        var hasInvalid = false;
+        for (var index = 0; index < value.Length; index++)
+        {
+            var current = value[index];
+            if (current == '\0' || char.IsLowSurrogate(current))
+            {
+                hasInvalid = true;
+                break;
+            }
+
+            if (char.IsHighSurrogate(current)
+                && (index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1])))
+            {
+                hasInvalid = true;
+                break;
+            }
+        }
+
+        if (!hasInvalid)
+        {
+            return value;
+        }
+
+        var builder = new StringBuilder(value.Length);
+        for (var index = 0; index < value.Length; index++)
+        {
+            var current = value[index];
+            if (current == '\0' || char.IsLowSurrogate(current))
+            {
+                continue;
+            }
+
+            if (char.IsHighSurrogate(current))
+            {
+                if (index + 1 < value.Length && char.IsLowSurrogate(value[index + 1]))
+                {
+                    builder.Append(current);
+                    builder.Append(value[index + 1]);
+                    index++;
+                }
+
+                continue;
+            }
+
+            builder.Append(current);
+        }
+
+        return builder.ToString();
     }
 }
 

@@ -17,6 +17,32 @@
     <ProjectReference Include="..\Omnis.Contracts\Omnis.Contracts.csproj" />
     <ProjectReference Include="..\Omnis.DocumentX\Omnis.DocumentX.csproj" />
     <ProjectReference Include="..\Omnis.EfCore\Omnis.EfCore.csproj" />
+    <ProjectReference Include="..\Omnis.Llm\Omnis.Llm.csproj" />
+    <ProjectReference Include="..\Omnis.Retrieval\Omnis.Retrieval.csproj" />
+    <ProjectReference Include="..\Omnis.Workflow\Omnis.Workflow.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Knowledge\Sql\**\*.sql">
+      <Link>sql\Knowledge\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Rag\Sql\**\*.sql">
+      <Link>sql\Rag\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Chat\Sql\**\*.sql">
+      <Link>sql\Chat\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Channel\Sql\**\*.sql">
+      <Link>sql\Channel\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Llm\Sql\**\*.sql">
+      <Link>sql\Llm\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Omnis 知识库上传</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #1f2933;
+      --muted: #667085;
+      --line: #d8dee8;
+      --soft: #eef3f7;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --indigo: #4f46e5;
+      --warn: #b45309;
+      --bad: #b42318;
+      --good: #047857;
+      --shadow: 0 14px 34px rgba(31, 41, 51, .08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .shell {
+      display: grid;
+      gap: 16px;
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 52px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 14px 0;
+    }
+
+    .panel-body {
+      padding: 14px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 7px 9px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 94px;
+      resize: vertical;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .14);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 7px 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: var(--accent-strong);
+    }
+
+    .btn.secondary {
+      border-color: #c7d2fe;
+      color: var(--indigo);
+    }
+
+    .btn:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    .kb-list {
+      display: grid;
+      gap: 8px;
+      max-height: 390px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .kb-item {
+      display: grid;
+      gap: 6px;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: inherit;
+      padding: 10px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .kb-item.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .12);
+    }
+
+    .item-top,
+    .meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 650;
+    }
+
+    .meta {
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 2px 8px;
+      background: #6b7280;
+      color: #fff;
+      font-size: 12px;
+      flex: 0 0 auto;
+    }
+
+    .pill.good {
+      background: var(--good);
+    }
+
+    .pill.warn {
+      background: var(--warn);
+    }
+
+    .pill.bad {
+      background: var(--bad);
+    }
+
+    .dropzone {
+      display: grid;
+      place-items: center;
+      gap: 8px;
+      min-height: 168px;
+      border: 1.5px dashed #9aa7b8;
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 18px;
+      text-align: center;
+      transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+
+    .dropzone.dragging {
+      border-color: var(--accent);
+      background: #eefaf8;
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .12);
+    }
+
+    .drop-title {
+      font-weight: 650;
+    }
+
+    .file-chip {
+      display: none;
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--soft);
+      padding: 5px 10px;
+      color: var(--ink);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-chip.visible {
+      display: inline-block;
+    }
+
+    .upload-layout {
+      display: grid;
+      grid-template-columns: minmax(280px, .92fr) minmax(360px, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .subpanel {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .status {
+      min-height: 20px;
+      color: var(--muted);
+    }
+
+    .status.error {
+      color: var(--bad);
+    }
+
+    .status.ok {
+      color: var(--good);
+    }
+
+    .result {
+      min-height: 92px;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+      padding: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    @media (max-width: 1100px) {
+      .layout,
+      .upload-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .shell {
+        padding: 12px;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+        padding-bottom: 12px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .field.full {
+        grid-column: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <h1>Omnis 知识库上传</h1>
+      <div class="toolbar">
+        <a class="btn" href="/admin/chat.html">AI 客服</a>
+        <a class="btn" href="/admin/llm.html">LLM 网关</a>
+        <button class="btn" id="refreshBtn" type="button">刷新</button>
+        <button class="btn primary" id="uploadBtn" type="button">上传文件</button>
+      </div>
+    </header>
+
+    <section class="layout">
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>知识库</h2>
+          <button class="btn secondary" id="createKbBtn" type="button">新建</button>
+        </div>
+        <div class="panel-body stack">
+          <div class="grid">
+            <div class="field">
+              <label for="filterTenantId">租户</label>
+              <input id="filterTenantId" value="default-tenant">
+            </div>
+            <div class="field">
+              <label for="filterWorkspaceId">工作空间</label>
+              <input id="filterWorkspaceId" value="default-workspace">
+            </div>
+          </div>
+          <div class="kb-list" id="kbList"></div>
+          <div class="status" id="kbStatus"></div>
+        </div>
+      </aside>
+
+      <section class="stack">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>文件上传</h2>
+            <span class="meta" id="selectedKbText">请选择知识库</span>
+          </div>
+          <div class="panel-body upload-layout">
+            <section class="subpanel">
+              <input id="fileInput" type="file" accept=".pdf,.txt,.md,.markdown,text/plain,text/markdown,application/pdf" hidden>
+              <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="选择或拖拽上传文件">
+                <div class="drop-title">拖拽文件到这里，或点击选择</div>
+                <div class="meta">MVP 支持 PDF、TXT、Markdown；上传后会自动解析、分片和向量化。</div>
+                <span class="file-chip" id="fileChip"></span>
+              </div>
+              <div class="grid">
+                <div class="field">
+                  <label for="tenantId">租户</label>
+                  <input id="tenantId" value="default-tenant">
+                </div>
+                <div class="field">
+                  <label for="workspaceId">工作空间</label>
+                  <input id="workspaceId" value="default-workspace">
+                </div>
+                <div class="field">
+                  <label for="visibility">文档可见性</label>
+                  <select id="visibility">
+                    <option value="0">公开</option>
+                    <option value="1" selected>内部</option>
+                    <option value="2">私有</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="directoryPath">目录</label>
+                  <input id="directoryPath" placeholder="/产品手册/2026">
+                </div>
+                <div class="field full">
+                  <label for="tags">标签</label>
+                  <input id="tags" placeholder="售后, FAQ, 产品">
+                </div>
+              </div>
+            </section>
+
+            <section class="subpanel">
+              <div class="grid">
+                <div class="field">
+                  <label for="principalType">授权主体</label>
+                  <select id="principalType">
+                    <option value="0">用户</option>
+                    <option value="1">用户组</option>
+                    <option value="2">角色</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="permission">权限</label>
+                  <select id="permission">
+                    <option value="0">读取</option>
+                    <option value="1">编辑</option>
+                    <option value="2">删除</option>
+                    <option value="3">分享</option>
+                    <option value="4">管理</option>
+                  </select>
+                </div>
+                <div class="field full">
+                  <label for="principalId">主体 ID</label>
+                  <input id="principalId" placeholder="user_001 / role_support / group_sales">
+                </div>
+              </div>
+              <div class="toolbar">
+                <button class="btn secondary" id="addAclBtn" type="button">添加 ACL</button>
+                <button class="btn" id="clearAclBtn" type="button">清空</button>
+              </div>
+              <div class="result" id="aclPreview">[]</div>
+              <div class="toolbar">
+                <button class="btn primary" id="uploadBtnInline" type="button">上传文件</button>
+              </div>
+              <div class="status" id="uploadStatus"></div>
+              <div class="result" id="uploadResult"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>文档列表</h2>
+            <button class="btn" id="loadDocsBtn" type="button">加载文档</button>
+          </div>
+          <div class="panel-body stack">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>名称</th>
+                    <th>状态</th>
+                    <th>可见性</th>
+                    <th>目录</th>
+                    <th>标签</th>
+                    <th>分片</th>
+                    <th>更新时间</th>
+                  </tr>
+                </thead>
+                <tbody id="docsBody"></tbody>
+              </table>
+            </div>
+            <div class="status" id="docsStatus"></div>
+          </div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const visibilityNames = { 0: "公开", 1: "内部", 2: "私有" };
+    const kbVisibilityNames = { 0: "公开", 1: "成员", 2: "自定义" };
+    const statusNames = { 0: "处理中", 1: "已完成", 2: "失败" };
+    const principalTypeNames = { 0: "用户", 1: "用户组", 2: "角色" };
+    const permissionNames = { 0: "读取", 1: "编辑", 2: "删除", 3: "分享", 4: "管理" };
+    const state = {
+      knowledgeBases: [],
+      selectedKnowledgeBaseId: null,
+      selectedFile: null,
+      acl: []
+    };
+    const $ = (id) => document.getElementById(id);
+
+    $("refreshBtn").addEventListener("click", loadKnowledgeBases);
+    $("createKbBtn").addEventListener("click", createKnowledgeBase);
+    $("loadDocsBtn").addEventListener("click", loadDocuments);
+    $("uploadBtn").addEventListener("click", uploadDocument);
+    $("uploadBtnInline").addEventListener("click", uploadDocument);
+    $("addAclBtn").addEventListener("click", addAcl);
+    $("clearAclBtn").addEventListener("click", clearAcl);
+    $("filterTenantId").addEventListener("change", syncScopeFromFilter);
+    $("filterWorkspaceId").addEventListener("change", syncScopeFromFilter);
+    $("fileInput").addEventListener("change", () => setFile($("fileInput").files[0]));
+
+    $("dropzone").addEventListener("click", () => $("fileInput").click());
+    $("dropzone").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        $("fileInput").click();
+      }
+    });
+    ["dragenter", "dragover"].forEach((name) => {
+      $("dropzone").addEventListener(name, (event) => {
+        event.preventDefault();
+        $("dropzone").classList.add("dragging");
+      });
+    });
+    ["dragleave", "drop"].forEach((name) => {
+      $("dropzone").addEventListener(name, (event) => {
+        event.preventDefault();
+        $("dropzone").classList.remove("dragging");
+      });
+    });
+    $("dropzone").addEventListener("drop", (event) => {
+      setFile(event.dataTransfer.files[0]);
+    });
+
+    syncScopeFromFilter();
+    renderAcl();
+    loadKnowledgeBases();
+
+    async function loadKnowledgeBases() {
+      const tenantId = $("filterTenantId").value.trim() || "default-tenant";
+      const workspaceId = $("filterWorkspaceId").value.trim();
+      const params = new URLSearchParams({ tenantId });
+      if (workspaceId) params.set("workspaceId", workspaceId);
+
+      try {
+        setStatus("kbStatus", "加载中...");
+        const data = await requestJson(`/api/knowledge-bases?${params}`);
+        state.knowledgeBases = data;
+        if (!data.some((item) => item.id === state.selectedKnowledgeBaseId)) {
+          state.selectedKnowledgeBaseId = data[0]?.id || null;
+        }
+        renderKnowledgeBases();
+        syncSelectedKnowledgeBase();
+        setStatus("kbStatus", `${data.length} 个知识库`, "ok");
+        if (state.selectedKnowledgeBaseId) await loadDocuments();
+      } catch (error) {
+        setStatus("kbStatus", error.message, "error");
+      }
+    }
+
+    function renderKnowledgeBases() {
+      const list = $("kbList");
+      list.innerHTML = "";
+      if (state.knowledgeBases.length === 0) {
+        list.innerHTML = `<div class="meta">暂无知识库，可点击“新建”。</div>`;
+        return;
+      }
+
+      state.knowledgeBases.forEach((kb) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = `kb-item ${kb.id === state.selectedKnowledgeBaseId ? "active" : ""}`;
+        item.innerHTML = `
+          <div class="item-top">
+            <span class="name">${escapeHtml(kb.name)}</span>
+            <span class="pill">${kbVisibilityNames[kb.defaultVisibility] || kb.defaultVisibility}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta">${escapeHtml(kb.tenantId)} / ${escapeHtml(kb.workspaceId)}</span>
+            <span class="meta">${formatDate(kb.createdAt)}</span>
+          </div>
+          <div class="meta">${escapeHtml(kb.description || "无描述")}</div>
+        `;
+        item.addEventListener("click", () => {
+          state.selectedKnowledgeBaseId = kb.id;
+          renderKnowledgeBases();
+          syncSelectedKnowledgeBase();
+          loadDocuments();
+        });
+        list.appendChild(item);
+      });
+    }
+
+    async function createKnowledgeBase() {
+      const tenantId = $("filterTenantId").value.trim() || "default-tenant";
+      const workspaceId = $("filterWorkspaceId").value.trim() || "default-workspace";
+      const name = prompt("知识库名称", "默认知识库");
+      if (!name || !name.trim()) return;
+
+      try {
+        setStatus("kbStatus", "创建中...");
+        const created = await requestJson("/api/knowledge-bases", {
+          method: "POST",
+          body: {
+            tenantId,
+            workspaceId,
+            name: name.trim(),
+            description: "",
+            defaultVisibility: 1
+          }
+        });
+        state.selectedKnowledgeBaseId = created.id;
+        setStatus("kbStatus", "已创建知识库", "ok");
+        await loadKnowledgeBases();
+      } catch (error) {
+        setStatus("kbStatus", error.message, "error");
+      }
+    }
+
+    async function uploadDocument() {
+      const kbId = state.selectedKnowledgeBaseId;
+      const file = state.selectedFile;
+      const tenantId = $("tenantId").value.trim();
+      const workspaceId = $("workspaceId").value.trim();
+      if (!kbId) {
+        setStatus("uploadStatus", "请先选择知识库", "error");
+        return;
+      }
+      if (!file) {
+        setStatus("uploadStatus", "请选择要上传的文件", "error");
+        return;
+      }
+      if (!tenantId || !workspaceId) {
+        setStatus("uploadStatus", "租户和工作空间必填", "error");
+        return;
+      }
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("tenantId", tenantId);
+      form.append("workspaceId", workspaceId);
+      form.append("visibility", $("visibility").value);
+      form.append("tags", $("tags").value.trim());
+      form.append("directoryPath", $("directoryPath").value.trim());
+      form.append("acl", JSON.stringify(state.acl));
+
+      try {
+        setUploading(true);
+        setStatus("uploadStatus", "上传并处理中...");
+        const response = await fetch(`/api/knowledge-bases/${kbId}/documents`, {
+          method: "POST",
+          body: form
+        });
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
+        if (!response.ok) {
+          throw new Error(data?.error || response.statusText);
+        }
+
+        $("uploadResult").textContent = JSON.stringify(data, null, 2);
+        setStatus("uploadStatus", "上传完成", "ok");
+        await loadDocuments();
+      } catch (error) {
+        setStatus("uploadStatus", error.message, "error");
+      } finally {
+        setUploading(false);
+      }
+    }
+
+    async function loadDocuments() {
+      const kbId = state.selectedKnowledgeBaseId;
+      if (!kbId) {
+        $("docsBody").innerHTML = "";
+        setStatus("docsStatus", "请选择知识库");
+        return;
+      }
+
+      const params = new URLSearchParams({
+        tenantId: $("tenantId").value.trim() || $("filterTenantId").value.trim() || "default-tenant",
+        workspaceId: $("workspaceId").value.trim() || $("filterWorkspaceId").value.trim() || "default-workspace"
+      });
+
+      try {
+        setStatus("docsStatus", "加载中...");
+        const docs = await requestJson(`/api/knowledge-bases/${kbId}/documents?${params}`);
+        $("docsBody").innerHTML = docs.map((doc) => `
+          <tr>
+            <td>${escapeHtml(doc.name)}</td>
+            <td><span class="pill ${statusClass(doc.status)}">${statusNames[doc.status] || doc.status}</span>${doc.failureReason ? `<br><span class="meta">${escapeHtml(doc.failureReason)}</span>` : ""}</td>
+            <td>${visibilityNames[doc.visibility] || doc.visibility}</td>
+            <td>${escapeHtml(doc.directoryPath || "")}</td>
+            <td>${escapeHtml((doc.tags || []).join(", "))}</td>
+            <td>${doc.chunkCount}</td>
+            <td>${formatDate(doc.updatedAt)}</td>
+          </tr>
+        `).join("");
+        setStatus("docsStatus", `${docs.length} 个文档`, "ok");
+      } catch (error) {
+        $("docsBody").innerHTML = `<tr><td colspan="7">${escapeHtml(error.message)}</td></tr>`;
+        setStatus("docsStatus", error.message, "error");
+      }
+    }
+
+    function addAcl() {
+      const principalId = $("principalId").value.trim();
+      if (!principalId) {
+        setStatus("uploadStatus", "ACL 主体 ID 不能为空", "error");
+        return;
+      }
+
+      state.acl.push({
+        principalType: Number($("principalType").value),
+        principalId,
+        permission: Number($("permission").value)
+      });
+      $("principalId").value = "";
+      renderAcl();
+      setStatus("uploadStatus", "已添加 ACL", "ok");
+    }
+
+    function clearAcl() {
+      state.acl = [];
+      renderAcl();
+    }
+
+    function renderAcl() {
+      if (state.acl.length === 0) {
+        $("aclPreview").textContent = "[]";
+        return;
+      }
+
+      $("aclPreview").textContent = state.acl.map((item, index) => {
+        const principal = `${principalTypeNames[item.principalType]}:${item.principalId}`;
+        const permission = permissionNames[item.permission];
+        return `${index + 1}. ${principal} - ${permission}`;
+      }).join("\n");
+    }
+
+    function syncScopeFromFilter() {
+      $("tenantId").value = $("filterTenantId").value.trim() || "default-tenant";
+      $("workspaceId").value = $("filterWorkspaceId").value.trim() || "default-workspace";
+    }
+
+    function syncSelectedKnowledgeBase() {
+      const kb = state.knowledgeBases.find((item) => item.id === state.selectedKnowledgeBaseId);
+      $("selectedKbText").textContent = kb ? `${kb.name} / ${kb.id}` : "请选择知识库";
+      if (kb) {
+        $("tenantId").value = kb.tenantId;
+        $("workspaceId").value = kb.workspaceId;
+      }
+    }
+
+    function setFile(file) {
+      state.selectedFile = file || null;
+      const chip = $("fileChip");
+      if (!file) {
+        chip.textContent = "";
+        chip.classList.remove("visible");
+        return;
+      }
+
+      chip.textContent = `${file.name} (${formatBytes(file.size)})`;
+      chip.classList.add("visible");
+      setStatus("uploadStatus", "");
+    }
+
+    async function requestJson(url, options = {}) {
+      const init = {
+        method: options.method || "GET",
+        headers: { "Content-Type": "application/json" }
+      };
+      if (options.body) init.body = JSON.stringify(options.body);
+
+      const response = await fetch(url, init);
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!response.ok) {
+        throw new Error(data?.error || response.statusText);
+      }
+
+      return data;
+    }
+
+    function setUploading(isUploading) {
+      $("uploadBtn").disabled = isUploading;
+      $("uploadBtnInline").disabled = isUploading;
+    }
+
+    function setStatus(id, message, kind = "") {
+      const target = $(id);
+      target.textContent = message;
+      target.className = `status ${kind}`;
+    }
+
+    function statusClass(status) {
+      if (status === 1) return "good";
+      if (status === 2) return "bad";
+      return "warn";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes)) return "";
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    }
+
+    function formatDate(value) {
+      return value ? new Date(value).toLocaleString() : "";
+    }
+  </script>
+</body>
+</html>
